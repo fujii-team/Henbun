@@ -53,9 +53,11 @@ class ParamTestsScalar(unittest.TestCase):
         self.m.initialize()
         before = self.m.p.value
         self.m.p = 3.0
+        self.assertTrue(self.m.p._assigned)
         self.assertTrue(isinstance(self.m.p, hb.param.Variable))
         self.m.initialize()
         after = self.m.p.value
+        self.assertFalse(self.m.p._assigned)
         self.assertFalse(np.allclose(before, np.array([3.0])))
         self.assertTrue(np.allclose(after, np.array([3.0])))
         ##self.assertTrue(self.m.get_tensor_dict()[self.m.p._tf_array] == 2.0)

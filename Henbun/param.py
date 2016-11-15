@@ -120,6 +120,7 @@ class Variable(Parentable):
         self.n_batch = n_batch
         self.shape = list(shape)
         self.n_layers = list(n_layers) # number of layers.
+        self._assigned = True
         if self.collections is graph_key.LOCAL:
             self._tensor = None # the value of this param. It will be sized [shape[:-1],N]
         else:
@@ -144,10 +145,18 @@ class Variable(Parentable):
 
     @property
     def local_variables(self):
-        if self.collections is graph_key.LOCAL:
+        if self.collections is graph_key.LOCAL and self._assigned:
             return [self]
         else:
             return []
+
+    def assign(self, value):
+        """
+        Assign value for self._tensor.
+        The initialize_ops is updated and _assigned flag raised.
+        """
+        self._initialize_op = self._tensor.assign(value)
+        self._assigned = True
 
     @property
     def initialize_ops(self):
@@ -155,6 +164,13 @@ class Variable(Parentable):
             return [self._initialize_op]
         else:
             return []
+
+    def finalize(self):
+        """
+        Remove a initialize_op so that the next initialization does not change
+        the parameters.
+        """
+        self._assigned = False
 
     @property
     def value(self):
@@ -248,11 +264,10 @@ class Parameterized(Parentable):
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter
             if isinstance(p, Variable) and isinstance(p.tensor, tf.Variable):
+                if isinstance(value, (float, int)):
+                    value = np.array([value], dtype=np_float_type)
                 if isinstance(value, np.ndarray):
-                    p._initialize_op = p.tensor.assign(value)
-                    return  # don't call object.setattr or set the _parent value
-                elif isinstance(value, (float, int)):
-                    p._initialize_op = p.tensor.assign(np.array([value], dtype=np_float_type))
+                    p.assign(value)
                     return
 
             # if the existing attribute is a Param (or Parameterized), and the
@@ -346,6 +361,14 @@ class Parameterized(Parentable):
         for p in self.sorted_variables:
             params += p.initialize_ops
         return params
+
+    def finalize(self):
+        """
+        Remove a initialize_op so that the next initialization does not change
+        the parameters.
+        """
+        for p in self.sorted_variables:
+            p.finalize()
 
     @property
     def feed_size(self):

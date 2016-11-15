@@ -213,3 +213,15 @@ class Normal(Variational):
         """
         return - 0.5 * tf.reduce_sum(self.logdet + tf.square(self.u) \
                                                - tf.square(self._tensor))
+
+class Gaussian(Normal):
+    """
+    Variational parameters without transform and Normal prior.
+    """
+    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+                                        collections=[tf.GraphKeys.VARIABLES]):
+        Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
+                        n_batch=n_batch,
+                        prior=priors.Normal(), transform=transforms.Identity(),
+                        collections=collections)
+        #self.scale = 

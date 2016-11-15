@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from functools import wraps
 import sys
 from . import transforms
-from .param import Parentable, Variable, Parameterized
+from .param import Parentable, Variable, Parameterized, graph_key
 from ._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
@@ -41,7 +41,7 @@ class Model(Parameterized):
 
     def likelihood(self):
         """
-        If there is likelihood, it will be implemented here.
+        If there is likelihood, it should be implemented here.
         """
         return tf.zeros([],dtype=float_type)
 
@@ -49,12 +49,11 @@ class Model(Parameterized):
         """
         Generate tf function to calculate ELBO.
         """
-        # TODO add local_manager
+        # TODO Likelihood and local.KL should be scaled to take into account
+        # the minibatch operation
         #scale = self._local_manager.minibatch_frac
         scale = tf.Variable(1.0, dtype=float_type)
         lik = tf.zeros([],dtype=float_type)
-        with self.variational_mode():
-            lik += tf.reduce_sum(self.likelihood()) * scale
         lik += self.KL(variable_types.locals) * scale
         lik += self.KL(variable_types.globals)
         return lik / tf.cast(self._tf_num_samples, dtype=float_type)
@@ -63,7 +62,11 @@ class Model(Parameterized):
         # TODO should support tensorflow 0.12
         # self._session.run(tf.variables_initializer(self.parameters))
         self._session.run(self.initialize_ops)
+        self.finalize()
 
+    def optimize(self, target='', maxiter=1000,
+                        collections=graph_key.VARIABLES, callback=None):
+        pass
 '''
     def _assign_tf(self, vtypes=variable_types.free_parameters):
         """
