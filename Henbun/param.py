@@ -100,8 +100,8 @@ class Variable(Parentable):
                                         collections=[graph_key.VARIABLES]):
         """
         shape: list or tuples indicating the shape of this parameters.
-                In the LOCAL case, the actual shape would be [*n_layers, *shape, N]
-                where N is the minibatch size.
+                In the LOCAL case, the right most axis is MinibatchSize.
+                This axis can be None. In this case, we do not validate the shape.
         transform: one of transforms.
         collections: List of strings or 'LOCAL'.
         If 'LOCAL' is assigned, this object does not create tf.Variable instead
@@ -116,7 +116,7 @@ class Variable(Parentable):
             self.shape = list(shape)
             self.n_layers = list(n_layers) # number of layers.
             # TODO Change to tensor reference to make it order-invariant of feed and tensor Op.
-            self.tensor = None # the value of this param. It will be sized [*shape,N]
+            self.tensor = None # the value of this param. It will be sized [shape[:-1],N]
         else:
             self.shape = list(n_layers) + list(shape)
             self.tensor = tf.Variable(tf.truncated_normal(self.shape, dtype=float_type),
@@ -152,7 +152,7 @@ class Variable(Parentable):
     @property
     def feed_size(self):
         if self.collections is graph_key.LOCAL:
-            return reduce(np.multiply, self.shape)
+            return reduce(np.multiply, self.shape[:-1], 1)
         else:
             return 0
 
@@ -162,7 +162,12 @@ class Variable(Parentable):
         x: tensor sized [*self._shape, N] where N is the minibatch size.
         """
         if self.collections is graph_key.LOCAL:
-            self.tensor = x
+            # check if the shape is the same
+            shape = x.get_shape()
+            if self.shape[-1] is not None and shape[-1] is not None:
+                assert(shape[-1]==self.shape[-1])
+            shape2 = self.n_layers + self.shape[:-1] + [tf.shape(x)[-1],]
+            self.tensor = tf.reshape(x, shape2)
 
 
 

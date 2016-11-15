@@ -27,6 +27,7 @@ from ._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
+
 class Variational(Parameterized):
     """
     The base class for the Variational parameters.
@@ -44,12 +45,16 @@ class Variational(Parameterized):
         Parameterized.__init__(self)
         self._shape = list([shape]) if isinstance(shape, int) else list(shape)
         self.n_layers = list([n_layers]) if isinstance(n_layers, int) else list(n_layers)
+        if self.collections is not graph_key.LOCAL:
+            # TODO ***
+        else:
+            # TODO ***
         self.size = int(reduce(np.multiply, self._shape))
         self.collections = collections
         # for the variational parameters
         assert(q_shape in ['diagonal', 'fullrank'])
         self.q_shape = q_shape
-        self.q_mu = Variable(self.size, n_layers=n_layers, collections=collections)
+        self.q_mu = Variable(self._shape, n_layers=n_layers, collections=collections)
         if self.q_shape is 'diagonal':
             # In the diagonal case, log(q_sqrt) will be stored.
             # (manual transform will be adopted)
@@ -66,7 +71,7 @@ class Variational(Parameterized):
             # samples from i.i.d
             sample_shape = list(self.n_layers) + [self.size]
             self.u = tf.random_normal(sample_shape, dtype=float_type)
-            self._sample()
+            self._tensor = self._sample(self.u)
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -74,18 +79,29 @@ class Variational(Parameterized):
         # samples from i.i.d
         sample_shape = list(self.n_layers) + [self.size, tf.shape(x)[-1]]
         self.u = tf.random_normal(sample_shape, dtype=float_type)
-        self._sample()
+        self._tensor = self._sample(self.u)
 
-    def _sample(self):
+    def _sample(self, u):
         # Build the sampling Ops
         # samples from the posterior
+        # u: i.i.d. sample
         with self.tf_mode():
             if self.q_shape is 'diagonal':
-                self._tensor = self.q_mu + tf.exp(self.q_sqrt) * self.u
+                return self.q_mu + tf.exp(self.q_sqrt) * u
             else:
-                self._tensor = self.q_mu + tf.squeeze(tf.batch_matmul(
-                    tf.matrix_band_part(self.q_sqrt,-1,0), tf.expand_dims(self.u, -1)),
-                    [-1])
+                # self.q_sqrt : [*R,n,n]
+                # self.q_mu   : [*R,n] -> [*R,n,1]
+                if self.collections is not graph_key.LOCAL:
+                    sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
+                else:
+                    # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
+                    trans_sqrt = list(range(len(self.n_layers)+len(self._shape)))
+                    trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
+                    # self.q_sqrt : [*R,n,n,N] -> [*R,N,n,n]
+                    sqrt = tf.transpose(
+                        tf.matrix_band_part(
+                        f.transpose(self.q_sqrt, trans_sqrt), -1,0), trans_sqrt)
+                return self.q_mu + tf.einsum(self._einsum_index(), sqrt, u)
 
     def KL(self, collection):
         if collection in self.collections:
@@ -103,6 +119,28 @@ class Variational(Parameterized):
         else:
             shape = self.n_layers + self.shape
         return tf.reshape(self._tensor, shape)
+
+    def _einsum_index(self):
+        """
+        A simple method to generate einsum index.
+        This method is called in _sample() method with 'fullrank' variational
+        parameters.
+        """
+        alphabet = 'abcdefghijklmnopqrstuvwxyz'
+        n = len(self.n_layers)
+        if self.collections is not graph_key.LOCAL:
+            # '...ijk,...ik->...,ij'
+            index1 = alphabet[:n+2]
+            index2 = alphabet[:n]+alphabet[n+1]
+            index3 = alphabet[:n+1]
+            return index1+','+index2+'->'+index3
+        else:
+            # '...ijkl,...ikl->...,ijl'
+            index1 = alphabet[:n+3]
+            index2 = alphabet[:n]+alphabet[n+1:n+3]
+            index3 = alphabet[:n+1]+alphabet[n+2]
+            return index1+','+index2+'->'+index3
+
 
     @property
     def logdet(self):
