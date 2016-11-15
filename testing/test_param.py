@@ -34,8 +34,12 @@ class ParamTestsScalar(unittest.TestCase):
         tf.reset_default_graph()
         self.m = hb.model.Model()
         self.m.p = hb.param.Variable([1])
-        self.m.q = hb.param.Variable([3,None], collections=graph_key.LOCAL)
-        self.m.r = hb.param.Variable([5,4,None], collections=graph_key.LOCAL)
+        # local
+        self.m.q = hb.param.Variable([3], collections=graph_key.LOCAL)
+        # layered local
+        self.m.r = hb.param.Variable([5,4], collections=graph_key.LOCAL)
+        # batched_global
+        self.m.s = hb.param.Variable([5,4], n_batch=2)
 
     def test_sorted_variables(self):
         """ make sure m.sorted_variables returns self.m.p """
@@ -86,11 +90,19 @@ class ParamTestsScalar(unittest.TestCase):
 
     def test_feed_variable(self):
         """ make sure Variable.feed works """
-        val = np.ones((3,10))
-        tensor = tf.Variable(val, dtype=float_type)
-        self.m.q.feed(tensor)
-        self.m._session.run(tf.initialize_variables([tensor]))
-        self.assertTrue(np.allclose(val, self.m.q.value))
+        val_q = np.ones((3,10))
+        tensor_q = tf.Variable(val_q, dtype=float_type)
+        val_r = np.ones((5,4,10))
+        tensor_r = tf.Variable(val_r, dtype=float_type)
+        val_s = np.ones((5,4,2))
+        self.m.q.feed(tensor_q)
+        self.m.r.feed(tensor_r)
+        self.m.s = val_s
+        self.m._session.run(tf.initialize_variables([tensor_q, tensor_r]))
+        self.m.initialize()
+        self.assertTrue(np.allclose(val_q, self.m.q.value))
+        self.assertTrue(np.allclose(val_r, self.m.r.value))
+        self.assertTrue(np.allclose(val_s, self.m.s.value))
 
     def test_feed_parameterized(self):
         """ make sure Parameterized.feed works """
@@ -108,8 +120,8 @@ class ParamTestLayered(unittest.TestCase):
         tf.reset_default_graph()
         self.m = hb.model.Model()
         self.m.p = hb.param.Variable([3],   n_layers = [2,3])
-        self.m.q = hb.param.Variable([3,None],   n_layers = [2,3], collections=graph_key.LOCAL)
-        self.m.r = hb.param.Variable([5,4,None], n_layers = [2,3], collections=graph_key.LOCAL)
+        self.m.q = hb.param.Variable([3],   n_layers = [2,3], collections=graph_key.LOCAL)
+        self.m.r = hb.param.Variable([5,4], n_layers = [2,3], collections=graph_key.LOCAL)
 
     def test_global(self):
         """ make sure Parameterized.feed works """
@@ -136,8 +148,8 @@ class ParamTestsDeeper(unittest.TestCase):
         self.m.foo = hb.param.Parameterized()
         self.m.foo.bar = hb.param.Parameterized()
         self.m.foo.bar.baz = hb.param.Variable(1)
-        self.m.foo.bar.q = hb.param.Variable([3,  None], collections=graph_key.LOCAL)
-        self.m.foo.bar.r = hb.param.Variable([5,4,None], collections=graph_key.LOCAL)
+        self.m.foo.bar.q = hb.param.Variable([3], collections=graph_key.LOCAL)
+        self.m.foo.bar.r = hb.param.Variable([5,4], collections=graph_key.LOCAL)
 
     def testHighestParent(self):
         self.assertTrue(self.m.foo.highest_parent is self.m)

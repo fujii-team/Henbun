@@ -96,12 +96,17 @@ class Variable(Parentable):
     Abstract class for LocalVariable, GlobalVariable, GlobalData,
     LocalVariational, GlobalVariationals
     """
-    def __init__(self, shape, n_layers=[], transform=transforms.Identity(),
-                                        collections=[graph_key.VARIABLES]):
+    def __init__(self, shape, n_layers=[], n_batch=None,
+        transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
         shape: list or tuples indicating the shape of this parameters.
                 In the LOCAL case, the right most axis is MinibatchSize.
                 This axis can be None. In this case, we do not validate the shape.
+        n_layers: List of integers indicating number of layers.
+        n_batches: Integer representing number of batches. It can be None.
+                In Local case, the batch_size is automatically determined if
+                None is given. If a certain value is specified, then Local and
+                Global variables behave same.
         transform: one of transforms.
         collections: List of strings or 'LOCAL'.
         If 'LOCAL' is assigned, this object does not create tf.Variable instead
@@ -112,16 +117,23 @@ class Variable(Parentable):
             shape = [shape]
         self.transform = transform
         self.collections = collections
+        self.n_batch = n_batch
+        self.shape = list(shape)
+        self.n_layers = list(n_layers) # number of layers.
         if self.collections is graph_key.LOCAL:
-            self.shape = list(shape)
-            self.n_layers = list(n_layers) # number of layers.
-            # TODO Change to tensor reference to make it order-invariant of feed and tensor Op.
-            self.tensor = None # the value of this param. It will be sized [shape[:-1],N]
+            self._tensor = None # the value of this param. It will be sized [shape[:-1],N]
         else:
-            self.shape = list(n_layers) + list(shape)
-            self.tensor = tf.Variable(tf.truncated_normal(self.shape, dtype=float_type),
+            if self.n_batch is None:
+                _shape = list(n_layers) + list(shape)
+            else:
+                _shape = list(n_layers) + list(shape) + [self.n_batch]
+            self._tensor = tf.Variable(tf.truncated_normal(_shape, dtype=float_type),
                         dtype=float_type, collections=collections)
             self._initialize_op = tf.initialize_variables([self.tensor])
+
+    @property
+    def tensor(self):
+        return self._tensor
 
     @property
     def parameter_tensors(self):
@@ -152,23 +164,22 @@ class Variable(Parentable):
     @property
     def feed_size(self):
         if self.collections is graph_key.LOCAL:
-            return reduce(np.multiply, self.shape[:-1], 1)
+            return reduce(np.multiply, self.shape, 1)
         else:
             return 0
 
     def feed(self, x):
         """
-        Feed values to this local param.
+        Feed values to this local variable.
         x: tensor sized [*self._shape, N] where N is the minibatch size.
         """
         if self.collections is graph_key.LOCAL:
             # check if the shape is the same
             shape = x.get_shape()
-            if self.shape[-1] is not None and shape[-1] is not None:
-                assert(shape[-1]==self.shape[-1])
-            shape2 = self.n_layers + self.shape[:-1] + [tf.shape(x)[-1],]
-            self.tensor = tf.reshape(x, shape2)
-
+            if self.n_batch is not None and shape[-1] is not None:
+                assert(shape[-1]==self.n_batch)
+            shape2 = self.n_layers + self.shape + [tf.shape(x)[-1],]
+            self._tensor = tf.reshape(x, shape2)
 
 
 class Parameterized(Parentable):
@@ -214,13 +225,9 @@ class Parameterized(Parentable):
         except AttributeError:
             return o
 
-        # In tf_mode, if the object is a Variable, use the tf_array
-        if isinstance(o, Variable):
-            return o.tensor
-
         # In tf_mode, if the object is a Parameterized and it has tensor attribute,
         # then return its tensor
-        if isinstance(o, Parameterized) and hasattr(o, 'tensor'):
+        if isinstance(o, (Parameterized, Variable)) and hasattr(o, 'tensor'):
             return o.tensor
 
         # in tf_mode, wrap functions is a scope

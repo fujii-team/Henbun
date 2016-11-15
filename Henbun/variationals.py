@@ -32,11 +32,18 @@ class Variational(Parameterized):
     """
     The base class for the Variational parameters.
     """
-    def __init__(self, shape, n_layers=[], q_shape='diagonal', prior=None,
-         transform=transforms.Identity(), collections=[tf.GraphKeys.VARIABLES]):
+    def __init__(self, shape, n_layers=[], n_batch=None,
+        q_shape='diagonal', prior=None,
+        transform=transforms.Identity(), collections=[tf.GraphKeys.VARIABLES]):
         """
-        shape: shape of this variational parameters
-        n_layers: number of layers
+        shape: list or tuples indicating the shape of this parameters.
+                In the LOCAL case, the right most axis is MinibatchSize.
+                This axis can be None. In this case, we do not validate the shape.
+        n_layers: List of integers indicating number of layers.
+        n_batches: Integer representing number of batches. It can be None.
+                In Local case, the batch_size is automatically determined if
+                None is given. If a certain value is specified, then Local and
+                Global variables behave same.
         q_shape: one of 'diagonal' or 'fullrank'
                 If 'fullrank' is specified, correlation among 'shape' will be
                 considered.
@@ -45,33 +52,41 @@ class Variational(Parameterized):
         Parameterized.__init__(self)
         self._shape = list([shape]) if isinstance(shape, int) else list(shape)
         self.n_layers = list([n_layers]) if isinstance(n_layers, int) else list(n_layers)
-        if self.collections is not graph_key.LOCAL:
-            # TODO ***
-        else:
-            # TODO ***
+        self.n_batch = n_batch
         self.size = int(reduce(np.multiply, self._shape))
         self.collections = collections
         # for the variational parameters
         assert(q_shape in ['diagonal', 'fullrank'])
         self.q_shape = q_shape
-        self.q_mu = Variable(self._shape, n_layers=n_layers, collections=collections)
+        self.q_mu = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
+                                collections=collections)
         if self.q_shape is 'diagonal':
             # In the diagonal case, log(q_sqrt) will be stored.
             # (manual transform will be adopted)
-            self.q_sqrt = Variable(self.size,
-                                    n_layers=n_layers, collections=collections)
+            self.q_sqrt = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
+                                collections=collections)
         else:
-            self.q_sqrt = Variable([self.size,self.size],
-                                    n_layers=n_layers, collections=collections)
+            self.q_sqrt = Variable([self.size,self.size], n_layers=n_layers, n_batch=self.n_batch,
+                                collections=collections)
         # transform and prior
         self.transform = transform
         self.prior = prior
         # sampling is made if this is not LOCAL parameters
         if self.collections is not graph_key.LOCAL:
-            # samples from i.i.d
-            sample_shape = list(self.n_layers) + [self.size]
+            if self.n_batch is None:
+                sample_shape = list(self.n_layers) + [self.size]
+            else:
+                sample_shape = list(self.n_layers) + [self.size] + [self.n_batch]
+            # sample from i.i.d.
             self.u = tf.random_normal(sample_shape, dtype=float_type)
             self._tensor = self._sample(self.u)
+
+    @property
+    def tensor(self):
+        if self.collections is not graph_key.LOCAL and self.n_batch is None:
+            return tf.reshape(self._tensor, self.n_layers + self.shape)
+        else:
+            return tf.reshape(self._tensor, self.n_layers + self.shape + [-1])
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -91,17 +106,17 @@ class Variational(Parameterized):
             else:
                 # self.q_sqrt : [*R,n,n]
                 # self.q_mu   : [*R,n] -> [*R,n,1]
-                if self.collections is not graph_key.LOCAL:
+                if self.collections is not graph_key.LOCAL and self.n_batch is None:
                     sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
                 else:
                     # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
-                    trans_sqrt = list(range(len(self.n_layers)+len(self._shape)))
+                    trans_sqrt = list(range(len(self.n_layers)+3))
                     trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
                     # self.q_sqrt : [*R,n,n,N] -> [*R,N,n,n]
                     sqrt = tf.transpose(
                         tf.matrix_band_part(
-                        f.transpose(self.q_sqrt, trans_sqrt), -1,0), trans_sqrt)
-                return self.q_mu + tf.einsum(self._einsum_index(), sqrt, u)
+                        tf.transpose(self.q_sqrt, trans_sqrt), 0,-1), trans_sqrt)
+                return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
 
     def KL(self, collection):
         if collection in self.collections:
@@ -109,18 +124,7 @@ class Variational(Parameterized):
         else:
             return np.zeros(1, dtype=np_float_type)
 
-    @property
-    def tensor(self):
-        """
-        Returns samples from the posterior
-        """
-        if self.collections is graph_key.LOCAL:
-            shape = self.n_layers + self.shape + [-1]
-        else:
-            shape = self.n_layers + self.shape
-        return tf.reshape(self._tensor, shape)
-
-    def _einsum_index(self):
+    def _einsum_matmul(self):
         """
         A simple method to generate einsum index.
         This method is called in _sample() method with 'fullrank' variational
@@ -128,7 +132,7 @@ class Variational(Parameterized):
         """
         alphabet = 'abcdefghijklmnopqrstuvwxyz'
         n = len(self.n_layers)
-        if self.collections is not graph_key.LOCAL:
+        if self.collections is not graph_key.LOCAL and self.n_batch is None:
             # '...ijk,...ik->...,ij'
             index1 = alphabet[:n+2]
             index2 = alphabet[:n]+alphabet[n+1]
@@ -141,6 +145,24 @@ class Variational(Parameterized):
             index3 = alphabet[:n+1]+alphabet[n+2]
             return index1+','+index2+'->'+index3
 
+    def _einsum_diag(self):
+        """
+        A simple method to generate einsum index for matrix_diag_part.
+        This method is called in logdet() method with 'fullrank' variational
+        parameters.
+        """
+        alphabet = 'abcdefghijklmnopqrstuvwxyz'
+        n = len(self.n_layers)
+        if self.collections is not graph_key.LOCAL and self.n_batch is None:
+            # '...ijk,...ik->...,ij'
+            index1 = alphabet[:n+1] + alphabet[n]
+            index2 = alphabet[:n+1]
+            return index1+'->'+index2
+        else:
+            # '...ijkl,...ikl->...,ijl'
+            index1 = alphabet[:n+1] + alphabet[n] + alphabet[n+1]
+            index2 = alphabet[:n+1] + alphabet[n+1]
+            return index1+'->'+index2
 
     @property
     def logdet(self):
@@ -150,7 +172,19 @@ class Variational(Parameterized):
         if self.q_shape is 'diagonal':
             return 2*self.q_sqrt # size [*shape]
         else:
-            return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
+            if self.collections is not graph_key.LOCAL and self.n_batch is None:
+                return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
+            else:
+                # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
+                trans_sqrt = list(range(len(self.n_layers)+3))
+                trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
+                logdet_tmp = tf.log(tf.square(tf.matrix_diag_part(
+                                        tf.transpose(self.q_sqrt, trans_sqrt))))
+                trans_sqrt = list(range(len(self.n_layers)+2))
+                trans_sqrt[-1], trans_sqrt[-2] = trans_sqrt[-2], trans_sqrt[-1]
+                return tf.transpose(logdet_tmp, trans_sqrt)
+            # TODO Due to tensorflow issue, einsum does not allow diag
+            # return tf.log(tf.square(tf.einsum(self._einsum_diag(), self.q_sqrt)))
 
     def _KL(self):
         #  E_{q(f)} [log q(f)]
@@ -167,9 +201,10 @@ class Normal(Variational):
     """
     Variational parameters without transform and Normal prior.
     """
-    def __init__(self, shape, n_layers=[], q_shape='diagonal',
+    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
                                         collections=[tf.GraphKeys.VARIABLES]):
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
+                        n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
     def _KL(self):

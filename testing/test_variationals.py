@@ -4,16 +4,27 @@ import numpy as np
 import unittest
 import Henbun as hb
 class test_einsum(unittest.TestCase):
-    def test(self):
+    def test_matmul(self):
         v_global = hb.variationals.Normal((2,3),
             n_layers=[2,3], q_shape='fullrank')
         v_local = hb.variationals.Normal((2,3),
             n_layers=[2,3], q_shape='fullrank',collections=hb.param.graph_key.LOCAL)
         #         layer:ab+shape:cd
         einsum_global_ref = 'abcd,abd->abc'
-        self.assertTrue(v_global._einsum_index() == einsum_global_ref)
+        self.assertTrue(v_global._einsum_matmul() == einsum_global_ref)
         einsum_local_ref = 'abcde,abde->abce'
-        self.assertTrue(v_local._einsum_index() == einsum_local_ref)
+        self.assertTrue(v_local._einsum_matmul() == einsum_local_ref)
+
+    def test_diag(self):
+        v_global = hb.variationals.Normal((2,3),
+            n_layers=[2,3], q_shape='fullrank')
+        v_local = hb.variationals.Normal((2,3),
+            n_layers=[2,3], q_shape='fullrank',collections=hb.param.graph_key.LOCAL)
+        #         layer:ab+shape:cd
+        einsum_global_ref = 'abcc->abc'
+        self.assertTrue(v_global._einsum_diag() == einsum_global_ref)
+        einsum_local_ref = 'abccd->abcd'
+        self.assertTrue(v_local._einsum_diag() == einsum_local_ref)
 
 class test_variational(unittest.TestCase):
     def setUp(self):
@@ -90,15 +101,24 @@ class test_variational_local(unittest.TestCase):
         self.m = {}
         for shape in self.shapes:
             self.m[shape] = hb.model.Model()
-            self.m[shape].m = hb.variationals.Normal([10,None],
+            self.m[shape].m = hb.variationals.Normal([10],
                 n_layers=[3], q_shape=shape, collections=hb.param.graph_key.LOCAL)
-            self.m[shape].m.feed(np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1))
+            if shape is 'fullrank':
+                self.m[shape].m.feed(np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1))
+            else:
+                self.m[shape].m.feed(np.concatenate([self.x, self.sqrts[shape]], axis=1))
+            # batched Global param
+            self.m[shape].q = hb.variationals.Normal([10], n_layers=[3],
+                                                    n_batch=2, q_shape=shape)
+            self.m[shape].q.q_mu = self.x
+            self.m[shape].q.q_sqrt = self.sqrts[shape]
+            self.m[shape].initialize()
         # immitate _draw_samples
         self.samples_iid = self.rng.randn(3,10,2)
 
     def test_logdet(self):
         # true solution
-        logdets = {'fullrank':np.zeros((3,10)), 'diagonal': np.zeros((3,10))}
+        logdets = {'fullrank':np.zeros((3,10,2)), 'diagonal': np.zeros((3,10,2))}
         for i in range(3):
             for j in range(10):
                 for k in range(2):
@@ -108,8 +128,10 @@ class test_variational_local(unittest.TestCase):
         for shape in self.shapes:
             self.m[shape].initialize()
             with self.m[shape].tf_mode():
-                logdet = self.m[shape]._session.run(self.m[shape].m.logdet)
-            self.assertTrue(np.allclose(logdet, logdets[shape]))
+                logdet_m = self.m[shape]._session.run(self.m[shape].m.logdet)
+                logdet_q = self.m[shape]._session.run(self.m[shape].q.logdet)
+            self.assertTrue(np.allclose(logdet_m, logdets[shape]))
+            self.assertTrue(np.allclose(logdet_q, logdets[shape]))
 
 '''
     def test_variational_mode(self):
