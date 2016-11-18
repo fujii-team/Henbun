@@ -1,4 +1,4 @@
-from __future__ import print_function
+#from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import unittest
@@ -45,9 +45,10 @@ class ParamTestsScalar(unittest.TestCase):
         """ make sure m.sorted_variables returns self.m.p """
         self.assertTrue(self.m.sorted_variables[0] is self.m.p)
 
-    def test_parameter_tensors(self):
+    def test_get_variables(self):
         """ make sure m.parameters returns a list of _tensor """
-        self.assertTrue(self.m.parameter_tensors[0] is self.m.p.tensor)
+        self.assertTrue(self.m.p._tensor in self.m.get_tf_variables())
+        self.assertTrue(self.m.q._tensor not in self.m.get_tf_variables())
 
     def testAssign(self):
         self.m.initialize()
@@ -66,6 +67,7 @@ class ParamTestsScalar(unittest.TestCase):
         old_p = self.m.p
         new_p = hb.param.Variable(3)
         self.m.p = new_p
+        self.assertTrue(new_p.highest_parent is self.m)
         self.assertFalse(old_p.highest_parent is self.m)
 
     def testHighestParent(self):
@@ -77,11 +79,10 @@ class ParamTestsScalar(unittest.TestCase):
     def testTFMode(self):
         self.assertTrue(isinstance(self.m.p, hb.param.Variable))
         with self.m.tf_mode():
-            self.assertTrue(isinstance(self.m.p, tf.Variable))
-            self.assertFalse(isinstance(self.m.p, tf.Tensor))
+            self.assertTrue(isinstance(self.m.p, tf.Tensor))
 
     def test_local_variables(self):
-        local_vars = self.m.local_variables
+        local_vars = self.m.get_variables(graph_key.LOCAL)
         self.assertTrue(self.m.q in local_vars)
         self.assertTrue(self.m.r in local_vars)
 
@@ -162,6 +163,13 @@ class ParamTestsDeeper(unittest.TestCase):
         old_p = self.m.foo.bar.baz
         new_p = hb.param.Variable(3)
         self.m.foo.bar.baz = new_p
+        self.assertFalse(old_p.highest_parent is self.m)
+
+    def testReplacement2(self):
+        old_p = self.m.foo
+        new_p = hb.param.Variable(3)
+        self.m.foo = new_p
+        self.assertTrue(new_p.highest_parent is self.m)
         self.assertFalse(old_p.highest_parent is self.m)
 
     def testName(self):
@@ -273,6 +281,26 @@ class TestParamList(unittest.TestCase):
 
     """
 
+class DataTest(unittest.TestCase):
+    def setUp(self):
+        self.rng = np.random.RandomState(0)
+        tf.reset_default_graph()
+        self.m = hb.model.Model()
+        self.m.foo = hb.param.Parameterized()
+        self.m.foo.bar = hb.param.Parameterized()
+        self.m.foo.bar.baz = hb.param.Variable(1)
+        self.data = self.rng.randn(3,2)
+        self.m.foo.bar.d1 = hb.param.Data(self.data)
+        self.minibatch_data = self.rng.randn(3,2,10)
+        self.m.foo.bar.d2 = hb.param.MinibatchData(self.minibatch_data)
+
+    def test_get_feed_dict(self):
+        index = self.rng.randint(0,10,3)
+        feed_dict = self.m.get_feed_dict(index)
+        self.assertTrue(np.allclose(feed_dict[self.m.foo.bar.d1._tensor],
+                                            self.m.foo.bar.d1.data))
+        self.assertTrue(np.allclose(feed_dict[self.m.foo.bar.d2._tensor],
+                                            self.m.foo.bar.d2.data[...,index]))
 '''
 class TestPickleAndDict(unittest.TestCase):
     def setUp(self):

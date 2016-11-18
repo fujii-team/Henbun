@@ -84,9 +84,9 @@ class Variational(Parameterized):
     @property
     def tensor(self):
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return tf.reshape(self._tensor, self.n_layers + self.shape)
+            return tf.reshape(self._tensor, self.n_layers + self._shape)
         else:
-            return tf.reshape(self._tensor, self.n_layers + self.shape + [-1])
+            return tf.reshape(self._tensor, self.n_layers + self._shape + [-1])
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -217,6 +217,7 @@ class Normal(Variational):
 class Gaussian(Normal):
     """
     Variational parameters without transform and Normal prior.
+    # TODO
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
                                         collections=[tf.GraphKeys.VARIABLES]):
@@ -224,4 +225,4 @@ class Gaussian(Normal):
                         n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-        #self.scale = 
+        #self.scale =

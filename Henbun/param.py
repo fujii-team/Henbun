@@ -31,6 +31,11 @@ class _GraphKey(object):
     def __init__(self):
         self.VARIABLES = tf.GraphKeys.VARIABLES
         self.LOCAL = 'LOCAL'
+        self.DATA = 'DATA'
+
+    @property
+    def not_parameters(self):
+        return [self.LOCAL, self.DATA]
 
 graph_key = _GraphKey()
 
@@ -121,7 +126,9 @@ class Variable(Parentable):
         self.shape = list(shape)
         self.n_layers = list(n_layers) # number of layers.
         self._assigned = True
-        if self.collections is graph_key.LOCAL:
+        if self.collections in graph_key.not_parameters:
+            # In LOCAL case, tensor will be feeded by self.feed method.
+            # In DATA case, PlaceHolder class should take care self._tensor
             self._tensor = None # the value of this param. It will be sized [shape[:-1],N]
         else:
             if self.n_batch is None:
@@ -129,23 +136,21 @@ class Variable(Parentable):
             else:
                 _shape = list(n_layers) + list(shape) + [self.n_batch]
             self._tensor = tf.Variable(tf.truncated_normal(_shape, dtype=float_type),
-                        dtype=float_type, collections=collections)
-            self._initialize_op = tf.initialize_variables([self.tensor])
+                    dtype=float_type, collections=collections)
+            self._initialize_op = tf.initialize_variables([self._tensor])
 
     @property
     def tensor(self):
-        return self._tensor
+        return self.transform.tf_forward(self._tensor)
 
-    @property
-    def parameter_tensors(self):
-        if self.collections is not graph_key.LOCAL:
-            return [self.tensor]
+    def get_tf_variables(self, collection):
+        if collection in self.collections:
+            return [self._tensor]
         else:
             return []
 
-    @property
-    def local_variables(self):
-        if self.collections is graph_key.LOCAL and self._assigned:
+    def get_variables(self, collection):
+        if collection in self.collections:
             return [self]
         else:
             return []
@@ -160,7 +165,7 @@ class Variable(Parentable):
 
     @property
     def initialize_ops(self):
-        if self.collections is not graph_key.LOCAL:
+        if self.collections not in graph_key.not_parameters and self._assigned:
             return [self._initialize_op]
         else:
             return []
@@ -191,12 +196,22 @@ class Variable(Parentable):
         """
         if self.collections is graph_key.LOCAL:
             # check if the shape is the same
-            shape = x.get_shape()
-            if self.n_batch is not None and shape[-1] is not None:
-                assert(shape[-1]==self.n_batch)
+            if hasattr(x, "get_shape"):
+                shape = x.get_shape()
+                if self.n_batch is not None and shape[-1] is not None:
+                    assert(shape[-1]==self.n_batch)
             shape2 = self.n_layers + self.shape + [tf.shape(x)[-1],]
             self._tensor = tf.reshape(x, shape2)
 
+    def get_feed_dict(self, minibatch_index):
+        """
+        This method should be implemented in the child class
+        """
+        feed_dict = {}
+        if self.collections is graph_key.DATA:
+            raise NotImplementedError
+        else:
+            return feed_dict
 
 class Parameterized(Parentable):
     """
@@ -241,6 +256,10 @@ class Parameterized(Parentable):
         except AttributeError:
             return o
 
+        # return _parent as it is.
+        if key is '_parent':
+            return o
+
         # In tf_mode, if the object is a Parameterized and it has tensor attribute,
         # then return its tensor
         if isinstance(o, (Parameterized, Variable)) and hasattr(o, 'tensor'):
@@ -259,21 +278,29 @@ class Parameterized(Parentable):
         """
         # If we already have an atribute with that key, decide what to do:
         if key in self.__dict__.keys():
-            p = getattr(self, key)
-
+            p = object.__getattribute__(self, key)
+            # In tf_mode, the setattribute for Local or Variational parameters
+            # are replaced by feed
+            try:
+                if object.__getattribute__(self, '_tf_mode'):
+                    if isinstance(p, (Variable, Parameterized)):
+                        p.feed(value)
+                        return
+            except:
+                pass
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter
-            if isinstance(p, Variable) and isinstance(p.tensor, tf.Variable):
+            if isinstance(p, Variable) and isinstance(p._tensor, tf.Variable):
                 if isinstance(value, (float, int)):
                     value = np.array([value], dtype=np_float_type)
                 if isinstance(value, np.ndarray):
                     p.assign(value)
                     return
-
             # if the existing attribute is a Param (or Parameterized), and the
             # new attribute is too, replace the attribute and set the model to
             # recompile if necessary.
-            if isinstance(p, Variable) and isinstance(value, (Variable, Parameterized)):
+            if isinstance(p, (Variable, Parameterized)) \
+                    and isinstance(value, (Variable, Parameterized)):
                 p._parent = None  # unlink the old Parameter from this tree
                 if hasattr(self, '_needs_recompile'):
                     self.highest_parent._needs_recompile = True
@@ -335,21 +362,19 @@ class Parameterized(Parentable):
                   and key is not '_parent']
         return sorted(variables, key=lambda x: x.name)
 
-    @property
-    def parameter_tensors(self):
+    def get_tf_variables(self, collection=graph_key.VARIABLES):
         """
         Return a list of all the child parameters that should be optimized.
         """
         params = []
         for p in self.sorted_variables:
-            params += p.parameter_tensors
+            params += p.get_tf_variables(collection)
         return params
 
-    @property
-    def local_variables(self):
+    def get_variables(self, collection):
         params = []
         for p in self.sorted_variables:
-                params += p.local_variables
+            params += p.get_variables(collection)
         return params
 
     @property
@@ -378,16 +403,17 @@ class Parameterized(Parentable):
         The summation is taken along the second last axis.
         The other axis for all the variables should be the same.
         """
-        return np.sum([p.feed_size for p in self.local_variables], dtype=int)
+        return np.sum([p.feed_size for p in self.get_variables(graph_key.LOCAL)],
+                                                                    dtype=int)
 
     def feed(self, x):
         """
         Feed tensor x into all the child LocalVariable
         """
         # --- assertion ---
-        assert len(self.local_variables)>0
-        n_layers=self.local_variables[0].n_layers
-        for p in self.local_variables:
+        assert len(self.get_variables(graph_key.LOCAL))>0
+        n_layers=self.get_variables(graph_key.LOCAL)[0].n_layers
+        for p in self.get_variables(graph_key.LOCAL):
             assert len(p.n_layers) == len(n_layers)
             assert all([n==n0 for n,n0 in zip(p.n_layers, n_layers)]), '''
             n_layers of all the LOCAL variables should be same for using this method. \n
@@ -395,12 +421,18 @@ class Parameterized(Parentable):
         # offset
         begin = np.zeros(len(n_layers) + 2, dtype=int)
         size = -np.ones(len(n_layers) + 2, dtype=int)
-        for p in self.local_variables:
+        for p in self.get_variables(graph_key.LOCAL):
             size[-2] = p.feed_size
             p.feed(tf.slice(x, begin, size))
             begin[-2] += p.feed_size
 
-    def KL(self, collection):
+    def get_feed_dict(self, minibatch_index):
+        feed_dict = {}
+        for p in self.sorted_variables:
+            feed_dict.update(p.get_feed_dict(minibatch_index))
+        return feed_dict
+
+    def KL(self, collection=graph_key.VARIABLES):
         """
         Returns the sum of KL values for all the childs.
         """
@@ -409,7 +441,7 @@ class Parameterized(Parentable):
         if len(KL_list) == 0: # for the zero-list case
             return np.zeros(1, dtype=np_float_type)
         else:
-            return reduce(tf.sum, KL_list)
+            return reduce(tf.add, KL_list)
 
 
 class ParamList(Parameterized):
@@ -475,10 +507,51 @@ class ParamList(Parameterized):
         """
         p = self.sorted_variables[key]
         if isinstance(value, np.ndarray):
-            p._initialize_op = p.tensor.assign(value)
+            p._initialize_op = p._tensor.assign(value)
             return  # don't call object.setattr or set the _parent value
         elif isinstance(value, (float, int)):
-            p._initialize_op = p.tensor.assign(np.array([value], dtype=np_float_type))
+            p._initialize_op = p._tensor.assign(np.array([value], dtype=np_float_type))
             return
         else:
             raise TypeError
+
+class Data(Variable):
+    """
+    Class for feeding data into Graph.
+    """
+    def __init__(self, data):
+        # call initializer
+        Variable.__init__(self, data.shape, n_layers=[], n_batch=None,
+                                                collections=graph_key.DATA)
+        # prepare placeholder
+        shape = list(self.n_layers) + list(self.shape)
+        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        self.data = data
+
+    def get_feed_dict(self, minibatch_index):
+        """
+        This method should be implemented in the child class
+        """
+        return {self._tensor: self.data}
+
+class MinibatchData(Variable):
+    """
+    Class for feeding minibatch-data into Graph.
+    """
+    def __init__(self, data, n_batch=None):
+        # call initializer
+        Variable.__init__(self, data.shape[:-1], n_layers=[], n_batch=n_batch,
+                                                collections=graph_key.DATA)
+        shape = list(self.n_layers) + list(self.shape) + [n_batch]
+        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        self.data = data
+
+    @property
+    def data_size(self):
+        return self.data.shape[-1]
+
+    def get_feed_dict(self, minibatch_index):
+        """
+        This method should be implemented in the child class
+        """
+        return {self._tensor: self.data[...,minibatch_index]}

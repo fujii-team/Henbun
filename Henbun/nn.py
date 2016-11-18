@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import traceback
-from .param import Variable, Parameterized
+from .param import Variable, Parameterized, graph_key
 from ._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
@@ -9,8 +9,7 @@ np_float_type = np.float32 if float_type is tf.float32 else np.float64
 class MatBias(Parameterized):
     def __init__(self, nodes, n_layers=[1],
                     variable = tf.Variable,
-                    dtype = tf.float32,
-                    collections = None):
+                    collections = [graph_key.VARIABLES]):
         """
         A simple class that handles matrix and baias pair, w*x + b
         input:
@@ -32,7 +31,7 @@ class NeuralNet(Parameterized):
     def __init__(self, nodes, n_layers = [],
                         variable_types = Variable,
                         neuron_types = tf.sigmoid,
-                        collections = None):
+                        collections = [graph_key.VARIABLES]):
         """
         nodes: list of nodes num of the neural net.
         n_layers: number of layers.

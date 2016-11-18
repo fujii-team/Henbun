@@ -3,6 +3,10 @@ import tensorflow as tf
 import numpy as np
 import unittest
 import Henbun as hb
+from Henbun._settings import settings
+float_type = settings.dtypes.float_type
+np_float_type = np.float32 if float_type is tf.float32 else np.float64
+
 class test_einsum(unittest.TestCase):
     def test_matmul(self):
         v_global = hb.variationals.Normal((2,3),
@@ -47,9 +51,13 @@ class test_variational(unittest.TestCase):
             self.m[shape].m.q_sqrt = self.sqrts[shape]
 
         # immitate _draw_samples
-        self.samples_iid = self.rng.randn(3,10)
+        self.samples_iid = self.rng.randn(3,10).astype(np_float_type)
         for shape in self.shapes:
             self.m[shape].initialize()
+
+    def test_parent(self):
+        for shape in self.shapes:
+            self.assertTrue(self.m[shape].m._parent is self.m[shape])
 
     def test_logdet(self):
         # true solution
@@ -61,8 +69,9 @@ class test_variational(unittest.TestCase):
         # check
         for shape in self.shapes:
             self.m[shape].initialize()
+            m = self.m[shape].m
             with self.m[shape].tf_mode():
-                logdet = self.m[shape]._session.run(self.m[shape].m.logdet)
+                logdet = self.m[shape]._session.run(m.logdet)
             self.assertTrue(np.allclose(logdet, logdets[shape]))
 
     def test_project_samples(self):
@@ -79,9 +88,10 @@ class test_variational(unittest.TestCase):
                         np.exp(self.sqrts[shape][i,:]) * self.samples_iid[i,:]
         # check
         for shape in self.shapes:
+            m = self.m[shape].m
             with self.m[shape].tf_mode():
                 project_samples = self.m[shape]._session.run(
-                        self.m[shape].m._sample(tf.convert_to_tensor(self.samples_iid)))
+                        m._sample(tf.convert_to_tensor(self.samples_iid)))
             self.assertTrue(np.allclose(project_samples, samples_post[shape]))
             # check if _tensor is created
             self.assertTrue(isinstance(self.m[shape].m._tensor, tf.Tensor))
@@ -90,23 +100,26 @@ class test_variational_local(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
-        self.sqrts  = {'fullrank':self.rng.randn(3,10,10,2),
-                       'diagonal':self.rng.randn(3,10,2)}
+        self.sqrts  = {'fullrank':self.rng.randn(3,10,10,2).astype(dtype=np_float_type),
+                       'diagonal':self.rng.randn(3,10,2).astype(dtype=np_float_type)}
         for i in range(3): # remove upper triangular part
             for j in range(10):
-                self.sqrts['fullrank'][i,j,j,:] = np.exp(self.sqrts['fullrank'][i,j,j])
+                self.sqrts['fullrank'][i,j,j,:] = np.exp(0.1*self.sqrts['fullrank'][i,j,j,:])
                 for k in range(j+1,10):
                     self.sqrts['fullrank'][i,j,k,:] = 0.
-        self.x = self.rng.randn(3,10,2)
+        self.x = self.rng.randn(3,10,2).astype(np_float_type)
         self.m = {}
         for shape in self.shapes:
             self.m[shape] = hb.model.Model()
+            # Local Variational variable
             self.m[shape].m = hb.variationals.Normal([10],
                 n_layers=[3], q_shape=shape, collections=hb.param.graph_key.LOCAL)
             if shape is 'fullrank':
-                self.m[shape].m.feed(np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1))
+                self.m[shape].m.q_mu.feed(self.x)
+                self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,100,2))
             else:
-                self.m[shape].m.feed(np.concatenate([self.x, self.sqrts[shape]], axis=1))
+                self.m[shape].m.q_mu.feed(self.x)
+                self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
             # batched Global param
             self.m[shape].q = hb.variationals.Normal([10], n_layers=[3],
                                                     n_batch=2, q_shape=shape)
@@ -114,7 +127,7 @@ class test_variational_local(unittest.TestCase):
             self.m[shape].q.q_sqrt = self.sqrts[shape]
             self.m[shape].initialize()
         # immitate _draw_samples
-        self.samples_iid = self.rng.randn(3,10,2)
+        self.samples_iid = self.rng.randn(3,10,2).astype(np_float_type)
 
     def test_logdet(self):
         # true solution
@@ -126,12 +139,23 @@ class test_variational_local(unittest.TestCase):
                     logdets['diagonal'][i,j,k] = 2.0*self.sqrts['diagonal'][i,j,k]
         # check
         for shape in self.shapes:
-            self.m[shape].initialize()
-            with self.m[shape].tf_mode():
-                logdet_m = self.m[shape]._session.run(self.m[shape].m.logdet)
-                logdet_q = self.m[shape]._session.run(self.m[shape].q.logdet)
+            with self.m[shape].m.tf_mode():
+                logdet_m = self.m[shape].run(self.m[shape].m.logdet)
+            with self.m[shape].q.tf_mode():
+                logdet_q = self.m[shape].run(self.m[shape].q.logdet)
             self.assertTrue(np.allclose(logdet_m, logdets[shape]))
             self.assertTrue(np.allclose(logdet_q, logdets[shape]))
+
+    def test_tf_mode(self):
+        for shape in self.shapes:
+            with self.m[shape].tf_mode():
+                if shape is 'diagonal':
+                    self.m[shape].m =\
+                        np.concatenate([self.x, self.sqrts[shape].reshape(3,10,2)], axis=1)
+                else:
+                    self.m[shape].m =\
+                        np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1)
+                self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
 
 '''
     def test_variational_mode(self):
@@ -168,7 +192,7 @@ class test_with_variational(unittest.TestCase):
     def test_variationals(self):
         vlist = self.m.sorted_variationals
         print(vlist)
-        self.assertTrue(vlist[0] == self.m.variational_p1)
+        self.assertTrue(vlisq[0] == self.m.variational_p1)
 
 
 '''

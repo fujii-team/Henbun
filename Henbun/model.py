@@ -5,11 +5,10 @@ from contextlib import contextmanager
 from functools import wraps
 import sys
 from . import transforms
-from .param import Parentable, Variable, Parameterized, graph_key
+from .param import Parentable, Variable, Parameterized, Data, MinibatchData, graph_key
 from ._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
-
 
 class Model(Parameterized):
     """
@@ -26,6 +25,7 @@ class Model(Parameterized):
         self._name = name
         self._needs_recompile = True
         self._session = tf.Session()
+        self.index = Indexer()
         # setUp the model
         self.setUp()
 
@@ -39,118 +39,162 @@ class Model(Parameterized):
         """
         pass
 
-    def likelihood(self):
-        """
-        If there is likelihood, it should be implemented here.
-        """
-        return tf.zeros([],dtype=float_type)
-
-    def build_elbo(self):
-        """
-        Generate tf function to calculate ELBO.
-        """
-        # TODO Likelihood and local.KL should be scaled to take into account
-        # the minibatch operation
-        #scale = self._local_manager.minibatch_frac
-        scale = tf.Variable(1.0, dtype=float_type)
-        lik = tf.zeros([],dtype=float_type)
-        lik += self.KL(variable_types.locals) * scale
-        lik += self.KL(variable_types.globals)
-        return lik / tf.cast(self._tf_num_samples, dtype=float_type)
-
     def initialize(self):
         # TODO should support tensorflow 0.12
         # self._session.run(tf.variables_initializer(self.parameters))
         self._session.run(self.initialize_ops)
         self.finalize()
 
-    def optimize(self, target='', maxiter=1000,
-                        collections=graph_key.VARIABLES, callback=None):
+    def validate(self):
+        """
+        Make some validation of this model.
+        """
+        # --- check all the LOCAL variables are fed ---
+        for p in self.get_variables(graph_key.LOCAL):
+            if p.tensor is None:
+                raise ValueError('local variable '+p.long_name+' is not fed.')
+
+        # --- check the data size ---
+        minibatch_data = [d for d in self.get_variables(graph_key.DATA)
+                                if isinstance(d, MinibatchData)]
+        if len(minibatch_data) > 1:
+            for d in minibatch_data:
+                if d.data_size != minibatch_data[0].data_size:
+                    raise ValueError('Minibatch data'+d.long_name+' is not the same size.')
+        if len(minibatch_data) > 0:
+            data_size = minibatch_data[0].data_size
+            if self.index.data_size is None or self.index.data_size != data_size:
+                self.index.setUp(data_size)
+
+    def test_feed_dict(self, minibatch_size=None):
+        """
+        Return feed_dict for test data
+        """
+        return self.get_feed_dict(self.index.test_index(minibatch_size))
+
+    def run(self, tensor, feed_dict=[]):
+        return self._session.run(tensor, feed_dict=feed_dict)
+
+class Indexer(object):
+    def __init__(self):
+        self.data_size = None
+        self.test_frac = 0.1
+
+    def setUp(self, data_size):
+        """
+        data_size: size of the entire data
+        test_frac: fraction of test data from the entire data
+        """
+        self.data_size = data_size
+        self.test_size  = int(np.floor(self.data_size*self.test_frac))
+        self.train_size = data_size - self.test_size
+        index = np.array(range(self.data_size))
+        np.random.shuffle(index)
+        self._train_index = index[:self.train_size]
+        self._test_index  = index[self.train_size:]
+
+    def train_index(self, minibatch_size):
+        """ Return random index from training data """
+        return self._train_index[np.random.randint(0, self.train_size, minibatch_size)]
+
+    def test_index(self, minibatch_size):
+        """ Return random index from test data """
+        return self._test_index[np.random.randint(0, self.test_size, minibatch_size)]
+
+class AutoOptimize(object):
+    """
+    This decorator class is designed to wrap the likelihood method in models
+    in order to enable the optimization or simple evaluation.
+
+    The typical usage is
+    >>> @AutoOptimize()
+    >>> def likelihood(self):
+    >>>     logp = ... some calculation ...
+    >>>     return logp
+
+    >>> likelihood.eval()
+    returns the objective value.
+
+    >>> likelihood.optimize(collection)
+    optimizes and update parameters.
+    """
+    def __init__(self):
         pass
-'''
-    def _assign_tf(self, vtypes=variable_types.free_parameters):
-        """
-        - assign values Variable._array -> Variable._tf_array
-        """
-        free_states = self.get_tensor_dict(vtypes)
-        assign_op = [key.assign(item) for key, item in free_states.items()]
-        self._session.run(assign_op)
 
-    def _assign_np(self, vtypes=variable_types.free_parameters):
-        """
-        - assign values Variable._tf_array -> Variable._array
-        """
-        free_states = self.get_tensor_dict(vtypes)
-        for key, item in free_states.items():
-            item[...] = self._session.run(key)
+    def __call__(self, method):
+        @wraps(method)
+        def runnable(instance):
+            optimizer_name = '_'+method.__name__+'_AF_optimizer'
+            if hasattr(instance, optimizer_name):
+                # the method has been compiled already.
+                optimizer = getattr(instance, optimizer_name)
+            else:
+                # the method deeds to be compiled
+                optimizer = Optimizer(instance, method)
+                setattr(instance, optimizer_name, optimizer)
+            return optimizer
 
-    def _compile(self):
+        return runnable
+
+class Optimizer(object):
+    """
+    Optimizer object that will be handled by AutoOptimizer class.
+    """
+    def __init__(self, model_instance, likelihood_method):
         """
-        compile the tensorflow function "self._objective"
+        model_instance: instance of model class.
+        likelihood_method: method to be optimized.
         """
-        with self.tf_mode():
-            self._draw_samples(self._tf_num_samples)
-            f = self.build_elbo()
-        self._minusF = tf.neg(f, name='objective')
+        self.model = model_instance
+        self.likelihood_method = likelihood_method
+        # Op for the likelihood evaluation
+        self.method_op = None
+        # Op for the optimzation
+        self.optimize_op = None
 
-        self._opt_steps = {}
-        assign_ops = []
-        for vtype in variable_types.free_parameters:
-            free_states = self.get_tensor_dict(vtype)
-            assign_ops += [key.assign(item) for key, item in free_states.items()]
-            # if there is no 'local' variables, then opt_step evaluation fails.
-            try:
-                self._opt_steps[vtype] = self.trainer[vtype].minimize(
-                                        self._minusF,
-                                        var_list=list(free_states.keys())),
-            except ValueError:
-                pass
-        # initialize
-        init = tf.initialize_all_variables()
-        self._session.run(init)
-
-        # build tensorflow functions for computing the likelihood
-        if settings.verbosity.tf_compile_verb:
-            print("compiling tensorflow function...")
-        sys.stdout.flush()
-
-        if settings.verbosity.tf_compile_verb:
-            print("done")
-        sys.stdout.flush()
-        self._needs_recompile = False
-
-    def optimize(self, maxiter, callback=None, num_samples=20,
-                                            vtype=variable_types.global_param):
-        if self._needs_recompile:
-            self._compile()
+    def compile(self, optimizer = tf.train.AdamOptimizer(),
+                collection=graph_key.VARIABLES):
         """
-        Optimize
+        Create self.method_op and self.optimize_op.
         """
-        # Make iterations.
-        feed_dict = self.get_tensor_dict(variable_types.fixed_values)
-        feed_dict[self._tf_num_samples] = num_samples
-        try:
-            iteration = 0
-            while iteration < maxiter:
-                self._session.run(self._opt_steps[vtype], feed_dict=feed_dict)
-                if callback is not None:
-                    callback(self._session.run(self._minusF, feed_dict))
-                iteration += 1
+        print('compiling...')
+        var_list = self.model.get_tf_variables(collection)
+        with self.model.tf_mode():
+            self.method_op = self.likelihood_method(self.model)
+            self.optimize_op = optimizer.minimize(tf.neg(self.method_op),
+                                                            var_list=var_list)
+        # manual initialization.
+        self.model.initialize()
+        # initialize un-initialized variable
+        self.model._session.run(tf.initialize_variables(
+            [v for v in tf.all_variables() if not
+             self.model._session.run(tf.is_variable_initialized(v))]))
+        # make validation
+        self.model.validate()
 
-        except KeyboardInterrupt:
-            print("Caught KeyboardInterrupt, setting model\
-                  with most recent state.")
-            self._assign_np(vtype)
-            return None
-        # set the result
-        self._assign_np(vtype)
+    def feed_dict(self, minibatch_size=None, training=True):
+        if minibatch_size is None:
+            return self.model.get_feed_dict(None)
+        elif training:
+            return self.model.get_feed_dict(
+                                self.model.index.train_index(minibatch_size))
+        else:# test
+            return self.model.get_feed_dict(
+                                self.model.index.test_index(minibatch_size))
 
+    def run(self, minibatch_size=None, training=True):
+        return self.model._session.run(self.method_op,
+                    feed_dict=self.feed_dict(minibatch_size, training))
 
-    def __setattr__(self, key, value):
+    def optimize(self, maxiter=1, minibatch_size=None, callback=None):
         """
-        Overload __setattr__ to raise recompilation flag if necessary
+        target: method to be optimized.
+        trainer: tf.train object.
         """
-        Parameterized.__setattr__(self, key, value)
-        if key is 'trainer':
-            self._needs_recompile = True
-'''
+        iteration = 0
+        while iteration < maxiter:
+            self.model._session.run(self.optimize_op,
+                        feed_dict=self.feed_dict(minibatch_size))
+            if callback is not None:
+                callback()
+            iteration += 1
