@@ -141,6 +141,8 @@ class Variable(Parentable):
 
     @property
     def tensor(self):
+        if self._tensor is None:
+            return None
         return self.transform.tf_forward(self._tensor)
 
     def get_tf_variables(self, collection):
@@ -419,11 +421,13 @@ class Parameterized(Parentable):
             n_layers of all the LOCAL variables should be same for using this method. \n
             If not, feed separately by hand instead.'''
         # offset
-        begin = np.zeros(len(n_layers) + 2, dtype=int)
-        size = -np.ones(len(n_layers) + 2, dtype=int)
+        begin = np.zeros(len(n_layers) + 2)
+        size = -np.ones(len(n_layers) + 2)
         for p in self.get_variables(graph_key.LOCAL):
             size[-2] = p.feed_size
-            p.feed(tf.slice(x, begin, size))
+#            p.feed(tf.slice(x, begin, size))
+            p.feed(tf.slice(x, tf.convert_to_tensor(begin, dtype=tf.int32),
+                               tf.convert_to_tensor(size,  dtype=tf.int32)))
             begin[-2] += p.feed_size
 
     def get_feed_dict(self, minibatch_index):
@@ -432,14 +436,14 @@ class Parameterized(Parentable):
             feed_dict.update(p.get_feed_dict(minibatch_index))
         return feed_dict
 
-    def KL(self, collection=graph_key.VARIABLES):
+    def KL(self):
         """
         Returns the sum of KL values for all the childs.
         """
-        KL_list = [p.KL(collection) for p in self.sorted_variables
+        KL_list = [p.KL() for p in self.sorted_variables
                     if hasattr(p, 'KL')]
         if len(KL_list) == 0: # for the zero-list case
-            return np.zeros(1, dtype=np_float_type)
+            return np.zeros([], dtype=np_float_type)
         else:
             return reduce(tf.add, KL_list)
 

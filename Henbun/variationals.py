@@ -79,7 +79,8 @@ class Variational(Parameterized):
                 sample_shape = list(self.n_layers) + [self.size] + [self.n_batch]
             # sample from i.i.d.
             self.u = tf.random_normal(sample_shape, dtype=float_type)
-            self._tensor = self._sample(self.u)
+            with self.tf_mode():
+                self._tensor = self._sample(self.u)
 
     @property
     def tensor(self):
@@ -92,7 +93,7 @@ class Variational(Parameterized):
         """ sampling is made in this method for the LOCAL case """
         Parameterized.feed(self, x)
         # samples from i.i.d
-        sample_shape = list(self.n_layers) + [self.size, tf.shape(x)[-1]]
+        sample_shape = self.n_layers + [self.size, tf.shape(x)[-1]]
         self.u = tf.random_normal(sample_shape, dtype=float_type)
         self._tensor = self._sample(self.u)
 
@@ -100,29 +101,25 @@ class Variational(Parameterized):
         # Build the sampling Ops
         # samples from the posterior
         # u: i.i.d. sample
-        with self.tf_mode():
-            if self.q_shape is 'diagonal':
-                return self.q_mu + tf.exp(self.q_sqrt) * u
-            else:
-                # self.q_sqrt : [*R,n,n]
-                # self.q_mu   : [*R,n] -> [*R,n,1]
-                if self.collections is not graph_key.LOCAL and self.n_batch is None:
-                    sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
-                else:
-                    # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
-                    trans_sqrt = list(range(len(self.n_layers)+3))
-                    trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
-                    # self.q_sqrt : [*R,n,n,N] -> [*R,N,n,n]
-                    sqrt = tf.transpose(
-                        tf.matrix_band_part(
-                        tf.transpose(self.q_sqrt, trans_sqrt), 0,-1), trans_sqrt)
-                return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
-
-    def KL(self, collection):
-        if collection in self.collections:
-            return self._KL()
+        if self.q_shape is 'diagonal':
+            return self.q_mu + tf.exp(self.q_sqrt) * u
         else:
-            return np.zeros(1, dtype=np_float_type)
+            # self.q_sqrt : [*R,n,n]
+            # self.q_mu   : [*R,n] -> [*R,n,1]
+            if self.collections is not graph_key.LOCAL and self.n_batch is None:
+                sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
+            else:
+                # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
+                trans_sqrt = list(range(len(self.n_layers)+3))
+                trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
+                # self.q_sqrt : [*R,n,n,N] -> [*R,N,n,n]
+                sqrt = tf.transpose(
+                    tf.matrix_band_part(
+                    tf.transpose(self.q_sqrt, trans_sqrt), 0,-1), trans_sqrt)
+            return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
+
+    def KL(self):
+        return self._KL()
 
     def _einsum_matmul(self):
         """
@@ -170,7 +167,7 @@ class Variational(Parameterized):
         Returns the log-determinant of the posterior
         """
         if self.q_shape is 'diagonal':
-            return 2*self.q_sqrt # size [*shape]
+            return 2.0*self.q_sqrt # size [*shape]
         else:
             if self.collections is not graph_key.LOCAL and self.n_batch is None:
                 return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
@@ -191,7 +188,7 @@ class Variational(Parameterized):
         kl = - 0.5 * tf.reduce_sum(np.log(2.0*np.pi) + self.logdet + tf.square(self.u))
         # - E_{q(f)}[log p(f)]
         if self.prior is not None:
-            kl -= self.prior.logp(self._tensor)
+            kl -= tf.reduce_sum(self.prior.logp(self._tensor))
             kl -= tf.reduce_sum(self.transform.tf_log_jacobian(self._tensor))
         return kl
 

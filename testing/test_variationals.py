@@ -151,11 +151,50 @@ class test_variational_local(unittest.TestCase):
             with self.m[shape].tf_mode():
                 if shape is 'diagonal':
                     self.m[shape].m =\
-                        np.concatenate([self.x, self.sqrts[shape].reshape(3,10,2)], axis=1)
+                            np.concatenate([self.x, self.sqrts[shape].reshape(3,10,2)], axis=1)
                 else:
                     self.m[shape].m =\
-                        np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1)
+                            np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1)
+                # make sure Variational is seen as tf.Tensor in tf_mode
                 self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
+            # make sure Variational is seen as Variational in non-tf_mode
+            self.assertTrue(isinstance(self.m[shape].m, hb.variationals.Variational))
+
+class VariationalModel(hb.model.Model):
+    def setUp(self):
+        self.q_global = hb.variationals.Normal(shape=[3])
+        self.q_local = hb.variationals.Normal(shape=[3], collections=hb.param.graph_key.LOCAL)
+        self.x = hb.param.Variable(shape=[6,10])
+    @hb.model.AutoOptimize()
+    def likelihood_global(self):
+        self.q_local = self.x
+        return -tf.reduce_sum(tf.square(self.q_global))
+    @hb.model.AutoOptimize()
+    def likelihood_local(self):
+        self.q_local = self.x
+        return -tf.reduce_sum(tf.square(self.q_local))
+
+
+class test_variational_model(unittest.TestCase):
+    def setUp(self):
+        self.m = VariationalModel()
+
+    def test_compile_global(self):
+        self.m.likelihood_global().compile()
+
+    def test_compile_local(self):
+        self.m.likelihood_local().compile()
+
+    def test_sorted_variables(self):
+        self.assertTrue(len(self.m.sorted_variables) == 3)
+
+    def test_KL(self):
+        self.m.initialize()
+        with self.m.tf_mode():
+            self.m.q_local = self.m.x
+            KL = self.m.KL()
+        kl = self.m.run(KL)
+        self.assertFalse(np.allclose(kl, 0))
 
 '''
     def test_variational_mode(self):

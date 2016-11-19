@@ -183,8 +183,11 @@ class Optimizer(object):
                                 self.model.index.test_index(minibatch_size))
 
     def run(self, minibatch_size=None, training=True):
-        return self.model._session.run(self.method_op,
-                    feed_dict=self.feed_dict(minibatch_size, training))
+        try:
+            return self.model._session.run(self.method_op,
+                        feed_dict=self.feed_dict(minibatch_size, training))
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
 
     def optimize(self, maxiter=1, minibatch_size=None, callback=None):
         """
@@ -193,8 +196,11 @@ class Optimizer(object):
         """
         iteration = 0
         while iteration < maxiter:
-            self.model._session.run(self.optimize_op,
-                        feed_dict=self.feed_dict(minibatch_size))
-            if callback is not None:
-                callback()
-            iteration += 1
+            try:
+                self.model._session.run(self.optimize_op,
+                            feed_dict=self.feed_dict(minibatch_size))
+                if callback is not None:
+                    callback()
+                iteration += 1
+            except KeyboardInterrupt:
+                raise KeyboardInterrupt

@@ -44,6 +44,7 @@ class ParamTestsScalar(unittest.TestCase):
     def test_sorted_variables(self):
         """ make sure m.sorted_variables returns self.m.p """
         self.assertTrue(self.m.sorted_variables[0] is self.m.p)
+        self.assertTrue(len(self.m.sorted_variables) == 4)
 
     def test_get_variables(self):
         """ make sure m.parameters returns a list of _tensor """

@@ -23,7 +23,7 @@ class test_model(unittest.TestCase):
         val = optimizer.run()
         self.assertTrue(np.allclose(val, -np.sum(np.square(self.m.p.value))))
         # optimize
-        optimizer.optimize()
+        optimizer.optimize(maxiter=1500)
         self.assertTrue(np.allclose(self.m.p.value, np.zeros((2,3)), atol=1.0e-4))
 
 
