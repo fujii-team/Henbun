@@ -33,7 +33,7 @@ class ParamTestsScalar(unittest.TestCase):
         self.rng = np.random.RandomState(0)
         tf.reset_default_graph()
         self.m = hb.model.Model()
-        self.m.p = hb.param.Variable([1])
+        self.m.p = hb.param.Variable([1], transform=hb.transforms.positive)
         # local
         self.m.q = hb.param.Variable([3], collections=graph_key.LOCAL)
         # layered local
