@@ -57,10 +57,7 @@ class test_gp(unittest.TestCase):
         m.k_var=1.0
         m.var  =1.0
         # adopt an exponential_decay of learning rate to maintain a good convergence.
-        global_step = tf.Variable(0, trainable=False)
-        learning_rate = tf.train.exponential_decay(0.001, global_step, 2000, 0.8)
-        m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001),
-                                        global_step=global_step)
+        m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001))
         m.likelihood_var().optimize(maxiter=20000)
 
         # average samples for likelihood
