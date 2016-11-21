@@ -112,10 +112,10 @@ class AutoOptimize(object):
     >>>     logp = ... some calculation ...
     >>>     return logp
 
-    >>> likelihood.eval()
+    >>> likelihood().run()
     returns the objective value.
 
-    >>> likelihood.optimize(collection)
+    >>> likelihood().optimize(collection)
     optimizes and update parameters.
     """
     def __init__(self):
@@ -153,7 +153,7 @@ class Optimizer(object):
         self.optimize_op = None
 
     def compile(self, optimizer = tf.train.AdamOptimizer(),
-                collection=graph_key.VARIABLES):
+                collection=graph_key.VARIABLES, global_step=None):
         """
         Create self.method_op and self.optimize_op.
         """
@@ -162,7 +162,7 @@ class Optimizer(object):
         with self.model.tf_mode():
             self.method_op = self.likelihood_method(self.model)
             self.optimize_op = optimizer.minimize(tf.neg(self.method_op),
-                                                            var_list=var_list)
+                                    var_list=var_list, global_step=global_step)
         # manual initialization.
         self.model.initialize()
         # initialize un-initialized variable

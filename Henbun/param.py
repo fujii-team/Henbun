@@ -138,7 +138,6 @@ class Variable(Parentable):
                     dtype=float_type, collections=collections)
             self._initialize_op = tf.initialize_variables([self._tensor])
 
-    @property
     def tensor(self):
         if self._tensor is None:
             return None
@@ -161,7 +160,7 @@ class Variable(Parentable):
         Assign value for self._tensor.
         The initialize_ops is updated and _assigned flag raised.
         """
-        self._initialize_op = self._tensor.assign(value)
+        self._initialize_op = self._tensor.assign(self.transform.backward(value))
         self._assigned = True
 
     @property
@@ -181,7 +180,7 @@ class Variable(Parentable):
     @property
     def value(self):
         assert(hasattr(self.highest_parent, '_session'))
-        return self.highest_parent._session.run(self.tensor)
+        return self.highest_parent._session.run(self.tensor())
 
     @property
     def feed_size(self):
@@ -264,7 +263,7 @@ class Parameterized(Parentable):
         # In tf_mode, if the object is a Parameterized and it has tensor attribute,
         # then return its tensor
         if isinstance(o, (Parameterized, Variable)) and hasattr(o, 'tensor'):
-            return o.tensor
+            return o.tensor()
 
         # in tf_mode, wrap functions is a scope
         elif key in object.__getattribute__(self, 'scoped_keys'):
@@ -494,7 +493,7 @@ class ParamList(Parameterized):
         """
         o = self.sorted_variables[key]
         if isinstance(o, Variable) and self._tf_mode:
-            return o.tensor
+            return o.tensor()
         return o
 
     def append(self, item):

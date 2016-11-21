@@ -1,7 +1,7 @@
 # Henbun
-<!--[![Build status](https://codeship.com/projects/8e8c5940-5322-0134-e799-4668b3c53a58/status?branch=master)](https://codeship.com/projects/147609)
-[![Coverage status](https://codecov.io/gh/fujii-team/GPinv/branch/master/graph/badge.svg)](https://codecov.io/gh/fujii-team/GPinv)
--->
+[![Build status](https://app.codeship.com/projects/e36941d0-90fc-0134-ef8a-6ae3641f140d/status?branch=master)](https://codeship.com/projects/185829)
+[![codecov](https://codecov.io/gh/fujii-team/Henbun/branch/master/graph/badge.svg)](https://codecov.io/gh/fujii-team/Henbun)
+
 
 Variational Bayesian inference of large-scale data with feed forward network.
 
@@ -15,5 +15,5 @@ Before installing **Henbun**, these two libreries must be installed.
 For the TensorFlow installation,
 see [**here**](https://www.tensorflow.org/versions/master/get_started/os_setup.html).
 
-For the **Henbun** installation, type
+For the installation of **Henbun**, execute
 > `python setup.py install`

@@ -33,7 +33,7 @@ class Variational(Parameterized):
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
         q_shape='diagonal', prior=None,
-        transform=transforms.Identity(), collections=[tf.GraphKeys.VARIABLES]):
+        transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
         shape: list or tuples indicating the shape of this parameters.
                 In the LOCAL case, the right most axis is MinibatchSize.
@@ -81,12 +81,13 @@ class Variational(Parameterized):
             with self.tf_mode():
                 self._tensor = self._sample(self.u)
 
-    @property
     def tensor(self):
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return tf.reshape(self._tensor, self.n_layers + self._shape)
+            return self.transform.tf_forward(
+                        tf.reshape(self._tensor, self.n_layers + self._shape))
         else:
-            return tf.reshape(self._tensor, self.n_layers + self._shape + [-1])
+            return self.transform.tf_forward(
+                        tf.reshape(self._tensor, self.n_layers + self._shape + [-1]))
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -198,7 +199,7 @@ class Normal(Variational):
     Variational parameters without transform and Normal prior.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
-                                        collections=[tf.GraphKeys.VARIABLES]):
+                                        collections=[graph_key.VARIABLES]):
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
@@ -216,9 +217,12 @@ class Gaussian(Normal):
     # TODO
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
-                                        collections=[tf.GraphKeys.VARIABLES]):
+                                        collections=[graph_key.VARIABLES]):
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-        #self.scale =
+        self.scale = Variable(1, collections=collections,
+                                 transform=transforms.positive)
+    def tensor(self):
+        return self.scale * Normal.tensor(self)
