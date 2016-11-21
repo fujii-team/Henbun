@@ -201,7 +201,7 @@ class Variable(Parentable):
             else:
                 _shape = list(n_layers) + list(shape) + [self.n_batch]
             self._tensor = tf.Variable(tf.truncated_normal(_shape, dtype=float_type),
-                    dtype=float_type, collections=collections)
+                                            dtype=float_type, collections=collections)
             self._initialize_op = tf.initialize_variables([self._tensor])
 
     def tensor(self):

@@ -6,20 +6,27 @@
 Variational Bayesian inference for large-scale data.
 
 # What is Henbun
-Henbun is a library to make a large-scale Bayesian inference based on variational approximation.
+Henbun is a Python library to make a large-scale Bayesian inference based on variational approximation.
 
-Henbun is built on top of **TensorFlow** which enables a parallel computation on
-GPU.
+Henbun is built on top of **TensorFlow** and thanks to TensorFlow's functionality,
+GPU computation becomes very easy without changing Python code.
 
-Additionally, large-scale Bayesian inference usually contains both the *local*
+In large-scale Bayesian inference usually contains both the *local*
 and *global* parameters, where *local* parameters are unique for each data while
 *global* parameters are common for all the data.  
-With Henbun framework, it is also possible to construct a feed-foward network
-to encode data into the variational parameters for the local parameters.
+Henbun makes it possible to construct a feed-forward network to encode data into
+the variational local parameters.  
+This encoding replaces *local* parameters to the feed-forward network written
+only by *global* parameters and therefore the model can be optimized
+stochastically.
 
+# Examples
 Some examples can be found in [**notebooks**](notebooks/).
-+ [Gaussian Process regression](notebooks/GaussianProcess.ipynb)  
++ Regression problems
+  + [Gaussian Process regression](notebooks/GaussianProcess.ipynb)  
   A very simple tutorial for simple variational Bayesian inference.
+
+  + [Expert model with Gaussian Process](notebooks/Expert_GPR.ipynb)
 
 + Tomographic reconstruction (coming soon)
 + Spectroscopic tomography (coming soon)  
