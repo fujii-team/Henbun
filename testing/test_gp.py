@@ -45,20 +45,23 @@ class test_gp(unittest.TestCase):
         m = gp()
         # run normal gpr
         m.likelihood_ana().compile(optimizer=tf.train.AdamOptimizer(0.01))
-        m.likelihood_ana().optimize(maxiter=1000)
+        m.likelihood_ana().optimize(maxiter=2000)
         lik = m.likelihood_ana().run()
         k_lengthscale = m.kern.lengthscales.value
         k_var = m.k_var.value
         var = m.var.value
 
         # run variational gpr
+        # reset hyperparameters
         m.kern.lengthscales=1.0
         m.k_var=1.0
         m.var  =1.0
-        m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.01))
-        m.likelihood_var().optimize(maxiter=10000)
-        with m.tf_mode():
-            [print(m.run(m.KL())) for _ in range(10)]
+        # adopt an exponential_decay of learning rate to maintain a good convergence.
+        global_step = tf.Variable(0, trainable=False)
+        learning_rate = tf.train.exponential_decay(0.001, global_step, 2000, 0.8)
+        m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001),
+                                        global_step=global_step)
+        m.likelihood_var().optimize(maxiter=20000)
 
         # average samples for likelihood
         lik_var = np.mean([m.likelihood_var().run() for i in range(100)])
@@ -66,7 +69,9 @@ class test_gp(unittest.TestCase):
         print(k_lengthscale, m.kern.lengthscales.value)
         print(k_var, m.k_var.value)
         print(var, m.var.value)
-        self.assertTrue(np.allclose(lik, m.likelihood_var().run(), atol=1.0))
+        self.assertTrue(np.allclose(lik, lik_var, atol=1.0))
+        self.assertTrue(np.allclose(k_lengthscale, m.kern.lengthscales.value, rtol=0.3))
+        self.assertTrue(np.allclose(var, m.var.value, rtol=0.3))
 
 
 if __name__ == '__main__':

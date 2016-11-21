@@ -111,11 +111,11 @@ class UnitStationary(Kern):
         are lower triangular.
         """
         jitter = settings.numerics.jitter_level
-        perm = tf.concat(concat_dim=0, values=[tf.range(1,tf.rank(X)), [0]]) # [1,2,0] or [1,0]
         # callable to absorb the X-rank difference
         # for non-batch X
         def fn1(): return tf.cholesky(self.K(X)+eye(tf.shape(X)[0])*jitter)
-        # for batch X
+        # for batch X.
+        # This is wrong for non-batch case, but can be executed without error.
         perm = tf.concat(concat_dim=0, values=[tf.range(1,tf.rank(X)), [0]]) # [1,2,0] or [1,0]
         def fn2(): return tf.transpose(tf.cholesky(
                         tf.transpose(self.K(X)) +\
