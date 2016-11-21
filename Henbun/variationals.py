@@ -30,23 +30,38 @@ np_float_type = np.float32 if float_type is tf.float32 else np.float64
 class Variational(Parameterized):
     """
     The base class for the Variational parameters.
+    We assume multivariate gaussian distribution for the variational
+    distribution.
+
+    The shape of covariance can be chosen from ['diagonal', 'fullrank'].
+    In fullrank case, the correlation between 'shape' dimension will be
+    considered (This axes are flattened in this class).
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
         q_shape='diagonal', prior=None,
         transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
-        shape: list or tuples indicating the shape of this parameters.
+        - shape: list or tuples indicating the shape of this parameters.
                 In the LOCAL case, the right most axis is MinibatchSize.
                 This axis can be None. In this case, we do not validate the shape.
-        n_layers: List of integers indicating number of layers.
-        n_batches: Integer representing number of batches. It can be None.
+
+        - n_layers: List of integers indicating number of layers.
+
+        - n_batches: Integer representing number of batches. It can be None.
                 In Local case, the batch_size is automatically determined if
                 None is given. If a certain value is specified, then Local and
                 Global variables behave same.
-        q_shape: one of 'diagonal' or 'fullrank'
+
+        - prior: prior of the variational parameters.
+
+        - transform: transform of the variational variable.
+            Note that the prior is applied to the post-transformation of the variable.
+
+        - q_shape: one of 'diagonal' or 'fullrank'
                 If 'fullrank' is specified, correlation among 'shape' will be
                 considered.
-        prior: prior of the variational parameters.
+
+        - collections: collections for the variational parameters.
         """
         Parameterized.__init__(self)
         self._shape = list([shape]) if isinstance(shape, int) else list(shape)
@@ -82,6 +97,9 @@ class Variational(Parameterized):
                 self._tensor = self._sample(self.u)
 
     def tensor(self):
+        """
+        In tf_mode, this class is seen as a sample from the variational distribution.
+        """
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
             return self.transform.tf_forward(
                         tf.reshape(self._tensor, self.n_layers + self._shape))
@@ -98,6 +116,9 @@ class Variational(Parameterized):
         self._tensor = self._sample(self.u)
 
     def _sample(self, u):
+        """
+        Method to sample from the variational distribution.
+        """
         # Build the sampling Ops
         # samples from the posterior
         # u: i.i.d. sample
@@ -117,9 +138,6 @@ class Variational(Parameterized):
                     tf.matrix_band_part(
                     tf.transpose(self.q_sqrt, trans_sqrt), 0,-1), trans_sqrt)
             return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
-
-    def KL(self):
-        return self._KL()
 
     def _einsum_matmul(self):
         """
@@ -183,7 +201,11 @@ class Variational(Parameterized):
             # TODO Due to tensorflow issue, einsum does not allow diag
             # return tf.log(tf.square(tf.einsum(self._einsum_diag(), self.q_sqrt)))
 
-    def _KL(self):
+    def KL(self):
+        """
+        Returns the sum of Kulback-Leibler divergence for this variational object.
+        This value is gathered by Parameterized.KL()
+        """
         #  E_{q(f)} [log q(f)]
         kl = - 0.5 * tf.reduce_sum(np.log(2.0*np.pi) + self.logdet + tf.square(self.u))
         # - E_{q(f)}[log p(f)]
@@ -196,7 +218,7 @@ class Variational(Parameterized):
 
 class Normal(Variational):
     """
-    Variational parameters without transform and Normal prior.
+    Variational parameters with Normal prior without transformation.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
                                         collections=[graph_key.VARIABLES]):
@@ -204,7 +226,7 @@ class Normal(Variational):
                         n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-    def _KL(self):
+    def KL(self):
         """
         Overwrite _KL method to increase efficiency.
         """
@@ -213,8 +235,7 @@ class Normal(Variational):
 
 class Gaussian(Normal):
     """
-    Variational parameters without transform and Normal prior.
-    # TODO
+    Variational parameters with Gaussian prior without transformation.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
                                         collections=[graph_key.VARIABLES]):
