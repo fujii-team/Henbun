@@ -179,7 +179,7 @@ class Logistic(Transform):
         self._a = tf.constant(self.a, float_type)
         self._b = tf.constant(self.b, float_type)
 
-
+'''
 class LowerTriangular(Transform):
     """
     A transform of the form
@@ -266,6 +266,6 @@ class LowerTriangular(Transform):
 
     def __str__(self):
         return "LoTri->vec"
-
+'''
 
 positive = Log1pe()

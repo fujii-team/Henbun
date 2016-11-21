@@ -72,7 +72,9 @@ class Model(Parameterized):
         """
         return self.get_feed_dict(self.index.test_index(minibatch_size))
 
-    def run(self, tensor, feed_dict=[]):
+    def run(self, tensor, feed_dict=None):
+        if feed_dict is None:
+            feed_dict = self.get_feed_dict()
         return self._session.run(tensor, feed_dict=feed_dict)
 
 class Indexer(object):

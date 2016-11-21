@@ -160,8 +160,9 @@ class Variable(Parentable):
         Assign value for self._tensor.
         The initialize_ops is updated and _assigned flag raised.
         """
-        self._initialize_op = self._tensor.assign(self.transform.backward(value))
-        self._assigned = True
+        if self.collections not in graph_key.not_parameters:
+            self._initialize_op = self._tensor.assign(self.transform.backward(value))
+            self._assigned = True
 
     @property
     def initialize_ops(self):
@@ -180,7 +181,7 @@ class Variable(Parentable):
     @property
     def value(self):
         assert(hasattr(self.highest_parent, '_session'))
-        return self.highest_parent._session.run(self.tensor())
+        return self.highest_parent.run(self.tensor())
 
     @property
     def feed_size(self):
@@ -290,7 +291,7 @@ class Parameterized(Parentable):
                 pass
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter
-            if isinstance(p, Variable) and isinstance(p._tensor, tf.Variable):
+            if isinstance(p, Variable):
                 if isinstance(value, (float, int)):
                     value = np.array([value], dtype=np_float_type)
                 if isinstance(value, np.ndarray):
@@ -428,7 +429,7 @@ class Parameterized(Parentable):
                                tf.convert_to_tensor(size,  dtype=tf.int32)))
             begin[-2] += p.feed_size
 
-    def get_feed_dict(self, minibatch_index):
+    def get_feed_dict(self, minibatch_index=None):
         feed_dict = {}
         for p in self.sorted_variables:
             feed_dict.update(p.get_feed_dict(minibatch_index))
@@ -535,6 +536,15 @@ class Data(Variable):
         This method should be implemented in the child class
         """
         return {self._tensor: self.data}
+
+    def assign(self, value):
+        """
+        Assign value for self._tensor.
+        The initialize_ops is updated and _assigned flag raised.
+        """
+        if not np.all(value.shape == self._tensor.get_shape()):
+            raise ValueError('The shape of data must be the same.')
+        self.data = value
 
 class MinibatchData(Variable):
     """

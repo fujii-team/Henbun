@@ -3,17 +3,48 @@
 [![codecov](https://codecov.io/gh/fujii-team/Henbun/branch/master/graph/badge.svg)](https://codecov.io/gh/fujii-team/Henbun)
 
 
-Variational Bayesian inference of large-scale data with feed forward network.
+Variational Bayesian inference for large-scale data.
+
+# What is Henbun
+Henbun is a library to make a large-scale Bayesian inference based on variational approximation.
+
+Henbun is built on top of **TensorFlow** which enables a parallel computation on
+GPU.
+
+Additionally, large-scale Bayesian inference usually contains both the *local*
+and *global* parameters, where *local* parameters are unique for each data while
+*global* parameters are common for all the data.  
+With Henbun framework, it is also possible to construct a feed-foward network
+to encode data into the variational parameters for the local parameters.
+
+Some examples can be found in [**notebooks**](notebooks/).
++ [Gaussian Process regression](notebooks/GaussianProcess.ipynb)  
+  A very simple tutorial for simple variational Bayesian inference.
+
++ Tomographic reconstruction (coming soon)
++ Spectroscopic tomography (coming soon)  
+An example as an inverse problem solver
+
++ Auto-encoder (coming soon)
+An example as an deep-learning framework.
+
++ Variational auto-encoder (coming soon)
+An example as an large scale Bayesian inference with feed-forward network.
 
 
-## Dependencies
+
+# Dependencies and Installation
 **Henbun** heavily depends on
 + [**TensorFlow**](https://www.tensorflow.org/): a Large-Scale Machine Learning library.
 
-Before installing **Henbun**, these two libreries must be installed.
+Before installing **Henbun**, **TensorFlow** must be installed.
 
-For the TensorFlow installation,
-see [**here**](https://www.tensorflow.org/versions/master/get_started/os_setup.html).
+See [**here**](https://www.tensorflow.org/versions/master/get_started/os_setup.html).
 
 For the installation of **Henbun**, execute
 > `python setup.py install`
+
+
+# Acknowledgements
+We learned a code structure from **GPflow**
+(https://https://github.com/GPflow/GPflow).
