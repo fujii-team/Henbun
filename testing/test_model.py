@@ -71,7 +71,7 @@ class MinibatchModel(hb.model.Model):
 
     @hb.model.AutoOptimize()
     def likelihood(self):
-        return -tf.reduce_sum(tf.square(self.p))
+        return -tf.reduce_sum(tf.square(self.p)) - self.KL()
 
 class test_model3(unittest.TestCase):
     def test_minibatch(self):

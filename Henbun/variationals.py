@@ -39,6 +39,7 @@ class Variational(Parameterized):
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
         q_shape='diagonal', prior=None,
+        mean=0.0, stddev=1.0,
         transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
         - shape: list or tuples indicating the shape of this parameters.
@@ -73,14 +74,17 @@ class Variational(Parameterized):
         assert(q_shape in ['diagonal', 'fullrank'])
         self.q_shape = q_shape
         self.q_mu = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
+                                mean=mean, stddev=stddev,
                                 collections=collections)
         if self.q_shape is 'diagonal':
             # In the diagonal case, log(q_sqrt) will be stored.
             # (manual transform will be adopted)
             self.q_sqrt = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
+                                mean=np.log(stddev), stddev=stddev,
                                 collections=collections)
         else:
             self.q_sqrt = Variable([self.size,self.size], n_layers=n_layers, n_batch=self.n_batch,
+                                mean=0.0, stddev=stddev,
                                 collections=collections)
         # transform and prior
         self.transform = transform

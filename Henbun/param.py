@@ -155,6 +155,7 @@ class Variable(Parentable):
     [[1],[1]]
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
+        mean=0.0, stddev=1.0,
         transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
         args:
@@ -200,7 +201,8 @@ class Variable(Parentable):
                 _shape = list(n_layers) + list(shape)
             else:
                 _shape = list(n_layers) + list(shape) + [self.n_batch]
-            self._tensor = tf.Variable(tf.truncated_normal(_shape, dtype=float_type),
+            self._tensor = tf.Variable(
+                tf.truncated_normal(_shape, dtype=float_type, mean=mean, stddev=stddev),
                                             dtype=float_type, collections=collections)
             self._initialize_op = tf.initialize_variables([self._tensor])
 
