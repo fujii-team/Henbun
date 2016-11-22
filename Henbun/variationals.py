@@ -80,11 +80,11 @@ class Variational(Parameterized):
             # In the diagonal case, log(q_sqrt) will be stored.
             # (manual transform will be adopted)
             self.q_sqrt = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
-                                mean=np.log(stddev), stddev=stddev,
+                                mean=np.log(0.2*stddev), stddev=0.1*stddev,
                                 collections=collections)
         else:
             self.q_sqrt = Variable([self.size,self.size], n_layers=n_layers, n_batch=self.n_batch,
-                                mean=2.0*stddev, stddev=stddev,
+                                mean=0.2*stddev, stddev=0.1*stddev,
                                 collections=collections)
         # transform and prior
         self.transform = transform
