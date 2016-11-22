@@ -667,6 +667,5 @@ class MinibatchData(Variable):
         """
         This method should be implemented in the child class
         """
-        if minibatch_index is None:
-            return {}
+        assert(minibatch_index is not None)
         return {self._tensor: self.data[...,minibatch_index]}
