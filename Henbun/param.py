@@ -27,6 +27,14 @@ float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
 class _GraphKey(object):
+    """
+    A simple class that holds graph_key, which is used as flag that distinguish
+    of several kinds of Variable.
+
+    VARIABLES: default collection, which is another name of tf.GraphKeys.VARIABLES.
+    LOCAL: flag for the local parameters.
+    DATA : flag for the data.
+    """
     def __init__(self):
         self.VARIABLES = tf.GraphKeys.VARIABLES
         self.LOCAL = 'LOCAL'
@@ -45,7 +53,7 @@ class Parentable(object):
     This class can figure out its own name (by seeing what it's called by the
     _parent's __dict__) and also recurse up to the highest_parent.
 
-    The code of this class is quated from
+    The code of this class is borrowed from
     https://github.com/GPflow/GPflow/blob/master/GPflow/param.py
     """
     def __init__(self):
@@ -86,35 +94,93 @@ class Parentable(object):
             return self.name
         return self._parent.long_name + '.' + self.name
 
-    def __getstate__(self):
-        d = self.__dict__.copy()
-        d.pop('_parent')
-        return d
-
-    def __setstate__(self, d):
-        self.__dict__.update(d)
-        self._parent = None
-
 class Variable(Parentable):
     """
-    Abstract class for LocalVariable, GlobalVariable, GlobalData,
-    LocalVariational, GlobalVariationals
+    Class for parameters and data.
+    We support the following variable types, according to 'collections'
+    arguments.
+
+    + global parameter (default).
+        A global parameter that is common for all the data.
+        Its 'collections' attribute should be a list of strings.
+        In case of global parameters, this object will have tf.Variable, that
+        will be optimized by TensorFlow
+
+    + local parameters
+        Local parameters that is unique for each data.
+        Its 'collections' attribute should be 'LOCAL'.
+        In this case, this object does not store any tf.Variable. Instead,
+        values should be fed into this object through .feed(value) method.
+        Note that in tf_mode (described Parameterized class), simple assginment
+        of tensor provides the feed.
+
+    + data
+        Its 'collections' attribute should be 'DATA'.
+        In this case, this object does not have tf.Variable, instead, it will
+        keep tf.placeholder.
+        Usually, we recommend to use Data class defined later, which inherites
+        this class.
+
+
+    To reading the current value of the parameter, `.value` attribute can be
+    used.
+
+    >>> m = hb.model.Model()
+    >>> m.p = hb.param.Variable([2,1])
+    >>> m.initialize()
+    >>> print(m.p.value)
+
+    Note that `value` property works only when this variable is a part of
+    hb.model.Model.
+
+
+    To setting new values to the parameter, assignment can be used.
+
+    >>> m.p = np.zeros((2,1))
+
+    Note that this assignment works only when this variable is stored in
+    `Parameterized` class.
+    Also note that the actual assignment is executed at the next
+    `Model.initialized()`.
+
+    >>> m.p = np.zeros((2,1))
+    >>> m.initialize()
+    >>> print(m.p)
+    [[0],[0]]
+    >>> m.p = np.ones((2,1))
+    >>> print(m.p)
+    [[0],[0]]
+    >>> m.initialize()
+    >>> print(m.p)
+    [[1],[1]]
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
         transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
         """
-        shape: list or tuples indicating the shape of this parameters.
-                In the LOCAL case, the right most axis is MinibatchSize.
-                This axis can be None. In this case, we do not validate the shape.
-        n_layers: List of integers indicating number of layers.
-        n_batches: Integer representing number of batches. It can be None.
-                In Local case, the batch_size is automatically determined if
-                None is given. If a certain value is specified, then Local and
-                Global variables behave same.
-        transform: one of transforms.
-        collections: List of strings or 'LOCAL'.
-        If 'LOCAL' is assigned, this object does not create tf.Variable instead
-        feed(x) method should be used.
+        args:
+        - shape: List or tuples of integers indicating the parameter shape.
+            The entire shape of the parameters will be
+            n_layers + shape + [n_batch]
+            In case of LOCAL method, shape dimension is flattened and fed by
+            `.feed` method.
+
+        - n_layers: List of integers indicating number of layers.
+            This option is convenient if feed-foward network that feeds values
+            to LOCAL parameters have multiple axis.
+
+        - n_batches: Integer representing number of batches. It can be None.
+            In case of LOCAL parameters, this dimension will be a minibatch axis.
+            In case of global parameters, this option just add an extra
+            dimension to the parameters.
+            However, it will maintain the compatibility between global and local
+            parameters.
+
+        - transform: one of transforms.
+            For example we can constrain the variable in positive space,
+            >>> transform = transforms.positive
+            In this case,
+
+        - collections: List of strings or 'LOCAL' or 'DATA'.
         """
         Parentable.__init__(self)
         if isinstance(shape, int):
@@ -135,21 +201,34 @@ class Variable(Parentable):
             else:
                 _shape = list(n_layers) + list(shape) + [self.n_batch]
             self._tensor = tf.Variable(tf.truncated_normal(_shape, dtype=float_type),
-                    dtype=float_type, collections=collections)
+                                            dtype=float_type, collections=collections)
             self._initialize_op = tf.initialize_variables([self._tensor])
 
     def tensor(self):
+        """
+        In tf_mode, this object is seen as self.tensor().
+        Transform is applied.
+        """
         if self._tensor is None:
             return None
         return self.transform.tf_forward(self._tensor)
 
     def get_tf_variables(self, collection):
+        """
+        Called from Parameterized object.
+        Return a list containing self._tensor if collection is in
+        `self.collections`.
+        """
         if collection in self.collections:
             return [self._tensor]
         else:
             return []
 
     def get_variables(self, collection):
+        """
+        Called from Parameterized object.
+        Return a list containing self if collection is in `self.collections`.
+        """
         if collection in self.collections:
             return [self]
         else:
@@ -157,14 +236,19 @@ class Variable(Parentable):
 
     def assign(self, value):
         """
-        Assign value for self._tensor.
+        Assign new value for self._tensor.
         The initialize_ops is updated and _assigned flag raised.
         """
-        self._initialize_op = self._tensor.assign(self.transform.backward(value))
-        self._assigned = True
+        if self.collections not in graph_key.not_parameters:
+            self._initialize_op = self._tensor.assign(self.transform.backward(value))
+            self._assigned = True
 
     @property
     def initialize_ops(self):
+        """
+        Return an Op if this parameter should be initialized.
+        If it is already initialized, return an empty list.
+        """
         if self.collections not in graph_key.not_parameters and self._assigned:
             return [self._initialize_op]
         else:
@@ -179,11 +263,19 @@ class Variable(Parentable):
 
     @property
     def value(self):
+        """
+        Return the current value of the parameter.
+        Note that this method only works if this object is a part of
+        `hb.model.Model`
+        """
         assert(hasattr(self.highest_parent, '_session'))
-        return self.highest_parent._session.run(self.tensor())
+        return self.highest_parent.run(self.tensor())
 
     @property
     def feed_size(self):
+        """
+        Returns the feed size if this is LOCAL parameter.
+        """
         if self.collections is graph_key.LOCAL:
             return reduce(np.multiply, self.shape, 1)
         else:
@@ -192,7 +284,8 @@ class Variable(Parentable):
     def feed(self, x):
         """
         Feed values to this local variable.
-        x: tensor sized [*self._shape, N] where N is the minibatch size.
+        The `shape` dimension is flattened.
+        x: tensor sized [*n_layers, *self._shape, N] where N is the minibatch size.
         """
         if self.collections is graph_key.LOCAL:
             # check if the shape is the same
@@ -205,7 +298,7 @@ class Variable(Parentable):
 
     def get_feed_dict(self, minibatch_index):
         """
-        This method should be implemented in the child class
+        It should be implemented in the child DATA class
         """
         feed_dict = {}
         if self.collections is graph_key.DATA:
@@ -225,9 +318,8 @@ class Parameterized(Parentable):
     A useful application of such a recursion is 'tf_mode', where the parameters
     appear as their _tf_array variables. This allows us to build models on
     those parameters. During _tf_mode, the __getattribute__ method is
-    overwritten to return tf arrays in place of parameters (and data).
-    Another recursive function is build_prior which sums the log-prior from all
-    of the tree's parameters (whilst in tf_mode!).
+    overwritten to return tensor in place of parameters (and data).
+
     *Scoping*
     Parameterized classes can define functions that operate on tf variables. To
     wrap those functions in tensorflow scopes, the names of the scoped
@@ -274,7 +366,11 @@ class Parameterized(Parentable):
 
     def __setattr__(self, key, value):
         """
-        We overwrite __setattr__ to Variable that feed to its tensor.
+        We overwrite __setattr__ to
+
+        + assign new values to Variables and Data (not in tf_mode)
+
+        + feed tensors into LOCAL parameters (in tf_mode)
         """
         # If we already have an atribute with that key, decide what to do:
         if key in self.__dict__.keys():
@@ -290,7 +386,7 @@ class Parameterized(Parentable):
                 pass
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter
-            if isinstance(p, Variable) and isinstance(p._tensor, tf.Variable):
+            if isinstance(p, Variable):
                 if isinstance(value, (float, int)):
                     value = np.array([value], dtype=np_float_type)
                 if isinstance(value, np.ndarray):
@@ -316,22 +412,20 @@ class Parameterized(Parentable):
     def tf_mode(self):
         """
         A context for building models.
-        Correct usage is:
-        with m.tf_mode:
-            # do tf stuff, like
-            m.build_likelihood()
-            m.build_prior()
-        with this context engaged, any Param objects which are children of this
-        class will appear as their tf-variables. Example
-        >>> m = Parameterized()
-        >>> m.foo = Param(1.0)
-        >>> m.make_tf_array(tt.dvector())
-        >>> print m.foo
-        foo
-        [ 1.]
+
+        With this context engaged, any Variable objects which are children of
+        this class will appear as their tf-tensor.
+        Example
+        >>> m = model.Model()
+        >>> m.foo = Variable(1)
+        >>> m.initialize()
+        >>> print(m.foo)
+        <Henbun.param.Variable at *****>
+
         >>> with m.tf_mode():
-        >>>     print m.foo
-        Reshape{1}.0
+        >>>     print(m.foo)
+        Tensor("Identity_5:0", shape=(1,), dtype=float32)
+
         The idea is that in tf_mode, we can easily get references to the
         tf representation of parameters in order to construct tf
         objective functions.
@@ -355,7 +449,7 @@ class Parameterized(Parentable):
         """
         Return a list of all the child variables, sorted by name.
         This makes sure they're always in the same order.
-        This method works also in tf_mode
+        This method works also in tf_mode.
         """
         variables = [child for key, child in self.__dict__.items()
                   if isinstance(child, (Variable, Parameterized))
@@ -364,7 +458,7 @@ class Parameterized(Parentable):
 
     def get_tf_variables(self, collection=graph_key.VARIABLES):
         """
-        Return a list of all the child parameters that should be optimized.
+        Return a list of all the tf.Variables that should be optimized.
         """
         params = []
         for p in self.sorted_variables:
@@ -372,6 +466,9 @@ class Parameterized(Parentable):
         return params
 
     def get_variables(self, collection):
+        """
+        Returns a list of all the child parameters in collection.
+        """
         params = []
         for p in self.sorted_variables:
             params += p.get_variables(collection)
@@ -423,12 +520,15 @@ class Parameterized(Parentable):
         size = -np.ones(len(n_layers) + 2)
         for p in self.get_variables(graph_key.LOCAL):
             size[-2] = p.feed_size
-#            p.feed(tf.slice(x, begin, size))
             p.feed(tf.slice(x, tf.convert_to_tensor(begin, dtype=tf.int32),
                                tf.convert_to_tensor(size,  dtype=tf.int32)))
             begin[-2] += p.feed_size
 
-    def get_feed_dict(self, minibatch_index):
+    def get_feed_dict(self, minibatch_index=None):
+        """
+        Gather all the child Data recursively and
+        returns a dictionary for the feed_dict.
+        """
         feed_dict = {}
         for p in self.sorted_variables:
             feed_dict.update(p.get_feed_dict(minibatch_index))
@@ -530,11 +630,20 @@ class Data(Variable):
         self._tensor = tf.placeholder(shape=shape, dtype=float_type)
         self.data = data
 
-    def get_feed_dict(self, minibatch_index):
+    def get_feed_dict(self, minibatch_index=None):
         """
         This method should be implemented in the child class
         """
         return {self._tensor: self.data}
+
+    def assign(self, value):
+        """
+        Assign value for self._tensor.
+        The initialize_ops is updated and _assigned flag raised.
+        """
+        if not np.all(value.shape == self._tensor.get_shape()):
+            raise ValueError('The shape of data must be the same.')
+        self.data = value
 
 class MinibatchData(Variable):
     """
@@ -556,4 +665,5 @@ class MinibatchData(Variable):
         """
         This method should be implemented in the child class
         """
+        assert(minibatch_index is not None)
         return {self._tensor: self.data[...,minibatch_index]}
