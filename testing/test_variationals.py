@@ -196,6 +196,22 @@ class test_variational_model(unittest.TestCase):
         kl = self.m.run(KL)
         self.assertFalse(np.allclose(kl, 0))
 
+
+class SimplestVariationalModel(hb.model.Model):
+    def setUp(self):
+        self.q = hb.variationals.Normal(shape=[3,2], q_shape='fullrank')
+
+class test_initial_values(unittest.TestCase):
+    def test(self):
+        """ make sure all the components in the full-rank diagonal is positive """
+        m = SimplestVariationalModel()
+        m.initialize()
+        sqrt = m.q.q_sqrt.value
+        diag = np.diagonal(sqrt)
+        self.assertTrue(np.all(diag > 0.0))
+
+
+
 '''
     def test_variational_mode(self):
         for shape in self.shapes:
