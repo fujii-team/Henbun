@@ -215,23 +215,23 @@ class Variable(Parentable):
             return None
         return self.transform.tf_forward(self._tensor)
 
-    def get_tf_variables(self, collection):
+    def get_tf_variables(self, collection=None):
         """
         Called from Parameterized object.
         Return a list containing self._tensor if collection is in
         `self.collections`.
         """
-        if collection in self.collections:
+        if collection is None or collection in self.collections:
             return [self._tensor]
         else:
             return []
 
-    def get_variables(self, collection):
+    def get_variables(self, collection=None):
         """
         Called from Parameterized object.
         Return a list containing self if collection is in `self.collections`.
         """
-        if collection in self.collections:
+        if collection is None or collection in self.collections:
             return [self]
         else:
             return []
@@ -458,18 +458,20 @@ class Parameterized(Parentable):
                   and key is not '_parent']
         return sorted(variables, key=lambda x: x.name)
 
-    def get_tf_variables(self, collection=graph_key.VARIABLES):
+    def get_tf_variables(self, collection=None):
         """
         Return a list of all the tf.Variables that should be optimized.
+        If collection is None, all the tf_variables are gathered.
         """
         params = []
         for p in self.sorted_variables:
             params += p.get_tf_variables(collection)
         return params
 
-    def get_variables(self, collection):
+    def get_variables(self, collection=None):
         """
         Returns a list of all the child parameters in collection.
+        If collection is None, all the variables are gathered.
         """
         params = []
         for p in self.sorted_variables:
@@ -536,11 +538,13 @@ class Parameterized(Parentable):
             feed_dict.update(p.get_feed_dict(minibatch_index))
         return feed_dict
 
-    def KL(self):
+    def KL(self, collection=None):
         """
-        Returns the sum of KL values for all the childs.
+        Returns the sum of KL values for the childrens having in
+        collection.
+        If collection is None, all childrens' KL is summed up.
         """
-        KL_list = [p.KL() for p in self.sorted_variables
+        KL_list = [p.KL(collection) for p in self.sorted_variables
                     if hasattr(p, 'KL')]
         if len(KL_list) == 0: # for the zero-list case
             return np.zeros([], dtype=np_float_type)
