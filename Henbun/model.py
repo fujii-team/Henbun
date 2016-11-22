@@ -62,6 +62,18 @@ class Model(Parameterized):
         # TODO some tricks to avoid recompilation
         #self._needs_recompile = True
 
+        self._saver = self._get_saver()
+
+    def _get_saver(self):
+        """ prepare saver """
+        # --- setup savers.---
+        var_dict = {v.long_name: v._tensor for v in self.get_variables()
+                if v.collections not in graph_key.not_parameters}
+        if len(var_dict.keys()) > 0:
+            return tf.train.Saver(var_dict)
+        else:
+            return None
+
     @property
     def name(self):
         return self._name
@@ -80,6 +92,29 @@ class Model(Parameterized):
         # self._session.run(tf.variables_initializer(self.parameters))
         self._session.run(self.initialize_ops)
         self.finalize()
+
+    def save(self, save_path = None, global_step = None):
+        """
+        Returns: path of the saved-file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        #
+        assert self._saver is not None
+        # do initialization for the case variables are not initialized.
+        self.initialize()
+        # save
+        return self._saver.save(self._session, save_path, global_step)
+
+    def restore(self, save_path=None):
+        """
+        Restore the parameter from file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        self._saver.restore(self._session, save_path)
+        # raise down the initialized flag
+        [v.finalize() for v in self.get_variables()]
 
     def run(self, tensor, feed_dict=None):
         """

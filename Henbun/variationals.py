@@ -205,7 +205,17 @@ class Variational(Parameterized):
             # TODO Due to tensorflow issue, einsum does not allow diag
             # return tf.log(tf.square(tf.einsum(self._einsum_diag(), self.q_sqrt)))
 
-    def KL(self):
+    def KL(self, collection=None):
+        """
+        Returns the KL values of this variational parameter.
+        If collection is None, KL is returned regardless of self.collections.
+        """
+        if collection is None or collection in self.collections:
+            return self._KL()
+        else:
+            return np.zeros([], dtype=np_float_type)
+
+    def _KL(self):
         """
         Returns the sum of Kulback-Leibler divergence for this variational object.
         This value is gathered by Parameterized.KL()
@@ -230,7 +240,7 @@ class Normal(Variational):
                         n_batch=n_batch,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-    def KL(self):
+    def _KL(self):
         """
         Overwrite _KL method to increase efficiency.
         """
