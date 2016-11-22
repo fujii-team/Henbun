@@ -65,7 +65,7 @@ class Model(Parameterized):
         # --- setup savers.---
         self._saver = tf.train.Saver(# variables to be saved.
             {v.long_name: v._tensor for v in self.get_variables()
-                    if v is not in graph_key.not_parameters})
+                    if v.collections not in graph_key.not_parameters})
 
     @property
     def name(self):
@@ -104,6 +104,8 @@ class Model(Parameterized):
         if save_path is None:
             save_path = self.name + '.ckpt'
         self._saver.restore(self._session, save_path)
+        # raise down the initialized flag
+        [v.finalize() for v in self.get_variables()]
 
     def run(self, tensor, feed_dict=None):
         """

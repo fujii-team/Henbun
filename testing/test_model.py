@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import unittest
 import Henbun as hb
+import os
 
 class SquareModel(hb.model.Model):
     def setUp(self):
@@ -40,6 +41,9 @@ class SquareModel2(hb.model.Model):
 class test_model2(unittest.TestCase):
     def setUp(self):
         self.m = SquareModel2()
+        self.filename = 'saved_file'
+        if os.path.exists(self.filename):
+            os.remove(self.filename)
 
     def test_initialize_finalize(self):
         optimizer = self.m.likelihood()
@@ -64,6 +68,27 @@ class test_model2(unittest.TestCase):
         self.assertTrue(np.allclose(self.m.p.value, np.zeros((2,3)), atol=1.0e-3))
         self.assertTrue(np.allclose(self.m.q.value, np.zeros((2,3)), atol=1.0e-3))
 
+    def test_save(self):
+        self.m.q = np.ones((2,3))
+        self.m.save(self.filename)
+        # make sure the file is generated
+        self.assertTrue(os.path.exists(self.filename))
+        # make sure the model.restore()
+        self.m2 = SquareModel2()
+        self.m2.restore(self.filename)
+        self.assertTrue(np.allclose(self.m2.q.value, np.ones((2,3))))
+        self.assertFalse(np.allclose(self.m2.p.value, np.ones((2,3))))
+        # make sure initialize() does not change the value
+        self.m2.initialize()
+        self.assertTrue(np.allclose(self.m2.q.value, np.ones((2,3))))
+        # remove the generated files
+        if os.path.exists(self.filename):
+            os.remove(self.filename)
+        if os.path.exists(self.filename+str('.meta')):
+            os.remove(self.filename+str('.meta'))
+        if os.path.exists('checkpoint'):
+            os.remove('checkpoint')
+
 class MinibatchModel(hb.model.Model):
     def setUp(self):
         self.d = hb.param.MinibatchData(np.random.randn(2,3,100))
@@ -86,8 +111,6 @@ class test_model3(unittest.TestCase):
         # compile
         self.m.likelihood().compile()
         self.assertTrue(self.m._index.data_size == 200)
-
-
 
 if __name__ == '__main__':
     unittest.main()
