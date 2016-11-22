@@ -84,7 +84,7 @@ class Variational(Parameterized):
                                 collections=collections)
         else:
             self.q_sqrt = Variable([self.size,self.size], n_layers=n_layers, n_batch=self.n_batch,
-                                mean=0.0, stddev=stddev,
+                                mean=2.0*stddev, stddev=stddev,
                                 collections=collections)
         # transform and prior
         self.transform = transform
