@@ -13,21 +13,59 @@ np_float_type = np.float32 if float_type is tf.float32 else np.float64
 class Model(Parameterized):
     """
     Base class that can be a highest_parent.
-    This class does basic operation,
-    - assign Variable._array -> Variable._tf_array
+
+    All the models must inherite this class.
+    Variables, Parameterized should be defined in setUp method.
+
+    The typical usage is to define a method to be optimized with decrated by
+    AutoOptimize,
+
+    >>> class SquareModel(hb.model.Model):
+    >>>     def setUp(self):
+    >>>         self.p = hb.param.Variable([2,3])
+    >>>
+    >>>     @hb.model.AutoOptimize()
+    >>>     def likelihood(self):
+    >>>         return -tf.reduce_sum(tf.square(self.p))
+    >>> m = SquareModel()
+    where
+    >>> m.likelihood().compile()
+    makes a tensorflow graph based that evaluates and optimize likelihood()
+    method.
+
+    >>> m.likelihood().run()
+    returns the value of m.likelihood() with the current parameter values.
+
+    >>> m.likelihood().optimize(maxiter = 1000)
+    optimizes global parameters in the graph that maximizes m.likelihood().
+
+
+    This class also does basic operations such as
+    >>> m.initialize()
+    assignes the value to parameters.
+
     """
     def __init__(self, name='model'):
         """
         name is a string describing this model.
         """
         Parameterized.__init__(self)
-        #self.scoped_keys.extend(['build_likelihood', 'build_prior'])
+        # name of the model
         self._name = name
-        self._needs_recompile = True
+        # tf.Session to run the graph
         self._session = tf.Session()
-        self.index = Indexer()
+        # Index that will be used for minibatching.
+        self._index = Indexer()
         # setUp the model
         self.setUp()
+
+        # TODO some tricks to avoid recompilation
+        #self._needs_recompile = True
+
+        # --- setup savers.---
+        self._saver = tf.train.Saver(# variables to be saved.
+            {v.long_name: v._tensor for v in self.get_variables()
+                    if v is not in graph_key.not_parameters})
 
     @property
     def name(self):
@@ -35,15 +73,50 @@ class Model(Parameterized):
 
     def setUp(self):
         """
-        The model creation should be done here in the inheriting method.
+        Definition of parameters should be done in this method.
         """
         pass
 
     def initialize(self):
+        """
+        Run the assignment ops that is gathered by self.initialize_op
+        """
         # TODO should support tensorflow 0.12
         # self._session.run(tf.variables_initializer(self.parameters))
         self._session.run(self.initialize_ops)
         self.finalize()
+
+    def save(self, save_path = None, global_step = None):
+        """
+        Returns: path of the saved-file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        # do initialization for the case variables are not initialized.
+        self.initialize()
+        # save
+        return self._saver.save(self._session, save_path, global_step)
+
+    def restore(self, save_path=None):
+        """
+        Restore the parameter from file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        self._saver.restore(self._session, save_path)
+
+    def run(self, tensor, feed_dict=None):
+        """
+        Shortcut for self._session.run(operation)
+        args:
+        - tensor: tensor or operation to be evaluated.
+        - feed_dict: feed dictionary to run the tensor.
+                    If this model do not have MinibatchData, feed_dict=None
+                    can be used to feed all the data.
+        """
+        if feed_dict is None:
+            feed_dict = self.get_feed_dict()
+        return self._session.run(tensor, feed_dict=feed_dict)
 
     def validate(self):
         """
@@ -63,19 +136,20 @@ class Model(Parameterized):
                     raise ValueError('Minibatch data'+d.long_name+' is not the same size.')
         if len(minibatch_data) > 0:
             data_size = minibatch_data[0].data_size
-            if self.index.data_size is None or self.index.data_size != data_size:
-                self.index.setUp(data_size)
+            if self._index.data_size is None or self._index.data_size != data_size:
+                self._index.setUp(data_size)
 
     def test_feed_dict(self, minibatch_size=None):
         """
         Return feed_dict for test data
         """
-        return self.get_feed_dict(self.index.test_index(minibatch_size))
+        return self.get_feed_dict(self._index.test_index(minibatch_size))
 
-    def run(self, tensor, feed_dict=[]):
-        return self._session.run(tensor, feed_dict=feed_dict)
 
 class Indexer(object):
+    """
+    A simple class that handles minibatching.
+    """
     def __init__(self):
         self.data_size = None
         self.test_frac = 0.1
@@ -103,7 +177,7 @@ class Indexer(object):
 
 class AutoOptimize(object):
     """
-    This decorator class is designed to wrap the likelihood method in models
+    This decorator class is designed to wrap methods in models
     in order to enable the optimization or simple evaluation.
 
     The typical usage is
@@ -138,7 +212,7 @@ class AutoOptimize(object):
 
 class Optimizer(object):
     """
-    Optimizer object that will be handled by AutoOptimizer class.
+    An object handled by AutoOptimizer class.
     """
     def __init__(self, model_instance, likelihood_method):
         """
@@ -156,6 +230,11 @@ class Optimizer(object):
                 collection=graph_key.VARIABLES, global_step=None):
         """
         Create self.method_op and self.optimize_op.
+        args:
+        - optimzer: instance of tf.train.optimizer.
+        - collection: variable collection that will be optimized.
+        - global_step: If want to decrease learning rate, global_step can be
+                        passed.
         """
         print('compiling...')
         var_list = self.model.get_tf_variables(collection)
@@ -173,34 +252,40 @@ class Optimizer(object):
         self.model.validate()
 
     def feed_dict(self, minibatch_size=None, training=True):
+        """
+        A method to deal with feed_dict
+        """
         if minibatch_size is None:
             return self.model.get_feed_dict(None)
         elif training:
             return self.model.get_feed_dict(
-                                self.model.index.train_index(minibatch_size))
+                                self.model._index.train_index(minibatch_size))
         else:# test
             return self.model.get_feed_dict(
-                                self.model.index.test_index(minibatch_size))
+                                self.model._index.test_index(minibatch_size))
 
     def run(self, minibatch_size=None, training=True):
+        """
+        Method to evaluate the method with the current parameters.
+        """
         try:
             return self.model._session.run(self.method_op,
                         feed_dict=self.feed_dict(minibatch_size, training))
         except KeyboardInterrupt:
             raise KeyboardInterrupt
 
-    def optimize(self, maxiter=1, minibatch_size=None, callback=None):
+    def optimize(self, maxiter=1, minibatch_size=None):
         """
-        target: method to be optimized.
-        trainer: tf.train object.
+        Method to optimize the self.method.
+        args:
+        - maxiter: number of iteration.
+        - minibatch_size: size of Minibatching.
         """
         iteration = 0
         while iteration < maxiter:
             try:
                 self.model._session.run(self.optimize_op,
                             feed_dict=self.feed_dict(minibatch_size))
-                if callback is not None:
-                    callback()
                 iteration += 1
             except KeyboardInterrupt:
                 raise KeyboardInterrupt

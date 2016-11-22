@@ -76,16 +76,16 @@ class MinibatchModel(hb.model.Model):
 class test_model3(unittest.TestCase):
     def test_minibatch(self):
         self.m = MinibatchModel()
-        self.assertTrue(self.m.index.data_size is None)
+        self.assertTrue(self.m._index.data_size is None)
         # compile
         self.m.likelihood().compile()
-        self.assertTrue(self.m.index.data_size == 100)
+        self.assertTrue(self.m._index.data_size == 100)
         # change the data size
         self.m.d = hb.param.MinibatchData(np.random.randn(2,3,200))
-        self.assertTrue(self.m.index.data_size == 100)
+        self.assertTrue(self.m._index.data_size == 100)
         # compile
         self.m.likelihood().compile()
-        self.assertTrue(self.m.index.data_size == 200)
+        self.assertTrue(self.m._index.data_size == 200)
 
 
 

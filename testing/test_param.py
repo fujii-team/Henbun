@@ -49,7 +49,7 @@ class ParamTestsScalar(unittest.TestCase):
     def test_get_variables(self):
         """ make sure m.parameters returns a list of _tensor """
         self.assertTrue(self.m.p._tensor in self.m.get_tf_variables())
-        self.assertTrue(self.m.q._tensor not in self.m.get_tf_variables())
+        self.assertTrue(self.m.q._tensor not in self.m.get_tf_variables(hb.param.graph_key.VARIABLES))
 
     def testAssign(self):
         self.m.initialize()
