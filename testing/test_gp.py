@@ -58,7 +58,7 @@ class test_gp(unittest.TestCase):
         m.var  =1.0
         # adopt an exponential_decay of learning rate to maintain a good convergence.
         m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001))
-        m.likelihood_var().optimize(maxiter=20000)
+        m.likelihood_var().optimize(maxiter=40000)
 
         # average samples for likelihood
         lik_var = np.mean([m.likelihood_var().run() for i in range(100)])
