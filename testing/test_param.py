@@ -281,6 +281,19 @@ class TestParamList(unittest.TestCase):
 
     """
 
+class InitTest(unittest.TestCase):
+    def setUp(self):
+        self.m = hb.model.Model()
+        self.m.p = hb.param.Variable(shape=[10,20], mean=0.0, stddev=0.1)
+        self.m.q = hb.param.Variable(shape=[10,20], mean=0.1, stddev=0.1)
+        self.m.initialize()
+
+    def test_init(self):
+        self.assertTrue(np.all(self.m.p.value >-0.2))
+        self.assertTrue(np.all(self.m.p.value < 0.2))
+        self.assertTrue(np.all(self.m.q.value >-0.1))
+        self.assertTrue(np.all(self.m.q.value < 0.3))
+
 class DataTest(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.RandomState(0)

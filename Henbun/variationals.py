@@ -74,17 +74,17 @@ class Variational(Parameterized):
         assert(q_shape in ['diagonal', 'fullrank'])
         self.q_shape = q_shape
         self.q_mu = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
-                                mean=mean, stddev=stddev,
+                                mean=mean, stddev=0.1*stddev,
                                 collections=collections)
         if self.q_shape is 'diagonal':
             # In the diagonal case, log(q_sqrt) will be stored.
             # (manual transform will be adopted)
             self.q_sqrt = Variable(self.size, n_layers=n_layers, n_batch=self.n_batch,
-                                mean=np.log(0.2*stddev), stddev=0.1*stddev,
+                                mean=np.log(stddev), stddev=0.1,
                                 collections=collections)
         else:
             self.q_sqrt = Variable([self.size,self.size], n_layers=n_layers, n_batch=self.n_batch,
-                                mean=0.2*stddev, stddev=0.1*stddev,
+                                mean=stddev, stddev=0.1*stddev,
                                 collections=collections)
         # transform and prior
         self.transform = transform
@@ -235,9 +235,11 @@ class Normal(Variational):
     Variational parameters with Normal prior without transformation.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+                                        mean=0.0, stddev=1.0,
                                         collections=[graph_key.VARIABLES]):
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,
+                        mean=mean, stddev=stddev,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
     def _KL(self):
@@ -252,12 +254,28 @@ class Gaussian(Normal):
     Variational parameters with Gaussian prior without transformation.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+                                        mean=0.0, stddev=1.0,
                                         collections=[graph_key.VARIABLES]):
+        # initialize mean and stddev
+        if np.abs(mean) < stddev:
+            scale_mean = stddev
+            q_mean= mean/stddev
+            q_std = 1.0
+        else:
+            scale_mean = mean
+            q_mean= 1.0
+            q_std = stddev/mean
+
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,
+                        mean=q_mean, stddev=q_std,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-        self.scale = Variable(1, collections=collections,
+        # shape is the same among lay
+        scale_shape = np.ones(len(shape)+len(n_layers), np.int)
+        self.scale = Variable(scale_shape, n_batch=n_batch,
+                                mean=scale_mean, stddev=0.1*scale_mean,
+                                 collections=collections,
                                  transform=transforms.positive)
     def tensor(self):
         return self.scale * Normal.tensor(self)
