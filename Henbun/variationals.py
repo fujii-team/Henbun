@@ -38,9 +38,9 @@ class Variational(Parameterized):
     considered (This axes are flattened in this class).
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
-        q_shape='diagonal', prior=None,
-        mean=0.0, stddev=1.0,
-        transform=transforms.Identity(), collections=[graph_key.VARIABLES]):
+        q_shape='diagonal', mean=0.0, stddev=1.0,
+        prior=None, transform=transforms.Identity(),
+        collections=[graph_key.VARIABLES]):
         """
         - shape: list or tuples indicating the shape of this parameters.
                 In the LOCAL case, the right most axis is MinibatchSize.
@@ -52,6 +52,10 @@ class Variational(Parameterized):
                 In Local case, the batch_size is automatically determined if
                 None is given. If a certain value is specified, then Local and
                 Global variables behave same.
+
+        - mean: initial mean of the variational parameters.
+
+        - stddev: initial stddev of the variational parameters
 
         - prior: prior of the variational parameters.
 
@@ -254,9 +258,35 @@ class Gaussian(Normal):
     Variational parameters with Gaussian prior without transformation.
     """
     def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
-                                        mean=0.0, stddev=1.0,
-                                        collections=[graph_key.VARIABLES]):
-        # initialize mean and stddev
+                mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
+                scale_shape=None, scale_n_layers=None):
+        """
+        - shape: list or tuples indicating the shape of this parameters.
+                In the LOCAL case, the right most axis is MinibatchSize.
+                This axis can be None. In this case, we do not validate the shape.
+
+        - n_layers: List of integers indicating number of layers.
+
+        - n_batches: Integer representing number of batches. It can be None.
+                In Local case, the batch_size is automatically determined if
+                None is given. If a certain value is specified, then Local and
+                Global variables behave same.
+
+        - q_shape: one of 'diagonal' or 'fullrank'
+                If 'fullrank' is specified, correlation among 'shape' will be
+                considered.
+
+        - collections: collections for the variational parameters.
+
+        - scale_shape, scale_n_layers: list (or tuple) of integers indicating
+                        the shape of scale parameters.
+                        By default, the scale shape is
+                        [1, 1, 1, 1, 1]
+                        with self.n_layers = [l1,l2]
+                             self.shape    = [s1,s2,s3]
+        """
+        # initialize mean and stddev.
+        # This class mainly controls scale rather than the variational part.
         if np.abs(mean) < stddev:
             scale_mean = stddev
             q_mean= mean/stddev
@@ -265,17 +295,21 @@ class Gaussian(Normal):
             scale_mean = mean
             q_mean= 1.0
             q_std = stddev/mean
-
+        #
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,
                         mean=q_mean, stddev=q_std,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
-        # shape is the same among lay
-        scale_shape = np.ones(len(shape)+len(n_layers), np.int)
-        self.scale = Variable(scale_shape, n_batch=n_batch,
-                                mean=scale_mean, stddev=0.1*scale_mean,
-                                 collections=collections,
-                                 transform=transforms.positive)
+
+        # scale shape
+        scale_shape = scale_shape or [1 for s in self._shape]
+        # scale layer
+        scale_layer = scale_n_layers or [1 for s in self.n_layers]
+        # Define scale parameter
+        self.scale = Variable(scale_shape, n_layers = scale_layer, n_batch=n_batch,
+            mean=scale_mean, stddev=0.1*scale_mean, transform=transforms.positive,
+                                 collections=collections)
+
     def tensor(self):
         return self.scale * Normal.tensor(self)
