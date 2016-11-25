@@ -11,8 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# 
-# This code is copied from GPflow https://github.com/GPflow/GPflow/
+#
+# Most of this code is copied from GPflow https://github.com/GPflow/GPflow/
 # Thanks GPflow!
 
 from six.moves import configparser
@@ -135,9 +135,9 @@ def read_config_file(path=None):
                                           os.path.dirname(os.path.realpath(__file__))])
         for loc in locations:
             # try both with and without preceeding 'dot' for hidden files (prefer non-hidden)
-            if c.read(os.path.join(loc, 'gpflowrc')):
+            if c.read(os.path.join(loc, 'henbunrc')):
                 break
-            if c.read(os.path.join(loc, '.gpflowrc')):
+            if c.read(os.path.join(loc, '.henbunrc')):
                 break
     else:
         assert (c.read(path))

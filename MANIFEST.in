@@ -1,0 +1,4 @@
+include README.md
+include RELEASE.md
+include LICENSE
+include Henbun/henbunrc

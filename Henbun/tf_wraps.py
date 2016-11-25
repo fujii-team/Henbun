@@ -29,6 +29,15 @@ def eye(N):
     """
     return tf.diag(tf.ones(tf.pack([N, ]), dtype=settings.dtypes.float_type))
 
+
+def clip(tensor):
+    """ A method to clip the tensor to avoid over- and under-flow    """
+    if settings.numerics.clip_by_value:
+        return tf.clip_by_value(tensor, settings.numerics.clip_value_min,
+                                        settings.numerics.clip_value_max)
+    else:
+        return tensor
+
 '''
 _custom_op_module = tf.load_op_library(os.path.join(os.path.dirname(__file__), 'tfops', 'matpackops.so'))
 vec_to_tri = _custom_op_module.vec_to_tri

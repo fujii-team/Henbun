@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import traceback
 from .param import Variable, Parameterized, graph_key
+from .tf_wraps import clip
 from ._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
@@ -28,7 +29,7 @@ class MatBias(Parameterized):
                             collections=collections)
 
     def __call__(self, x):
-        return tf.batch_matmul(self.w, x) + self.b
+        return clip(tf.batch_matmul(self.w, x) + self.b)
 
 class NeuralNet(Parameterized):
     def __init__(self, nodes, n_layers = [],

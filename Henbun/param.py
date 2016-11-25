@@ -296,6 +296,7 @@ class Variable(Parentable):
                 if self.n_batch is not None and shape[-1] is not None:
                     assert(shape[-1]==self.n_batch)
             shape2 = self.n_layers + self.shape + [tf.shape(x)[-1],]
+            # --- clip value ---
             self._tensor = tf.reshape(x, shape2)
 
     def get_feed_dict(self, minibatch_index):
