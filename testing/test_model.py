@@ -15,6 +15,7 @@ class SquareModel(hb.model.Model):
 
 class test_model(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.m = SquareModel()
 
     def test_auto_optimize(self):
@@ -40,6 +41,7 @@ class SquareModel2(hb.model.Model):
 
 class test_model2(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.m = SquareModel2()
         self.filename = 'saved_file'
         if os.path.exists(self.filename):
@@ -100,6 +102,7 @@ class MinibatchModel(hb.model.Model):
 
 class test_model3(unittest.TestCase):
     def test_minibatch(self):
+        tf.set_random_seed(0)
         self.m = MinibatchModel()
         self.assertTrue(self.m._index.data_size is None)
         # compile

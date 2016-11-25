@@ -42,6 +42,7 @@ class gp(hb.model.Model):
 
 class test_gp(unittest.TestCase):
     def test(self):
+        tf.set_random_seed(0)
         m = gp()
         # run normal gpr
         m.likelihood_ana().compile(optimizer=tf.train.AdamOptimizer(0.01))

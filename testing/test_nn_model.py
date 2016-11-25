@@ -13,6 +13,7 @@ class SquareModel(hb.model.Model):
 
 class test_square(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.m = SquareModel()
 
     def test_manual_optimize(self):
