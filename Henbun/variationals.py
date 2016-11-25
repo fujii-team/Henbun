@@ -292,9 +292,9 @@ class Gaussian(Normal):
             q_mean= mean/stddev
             q_std = 1.0
         else:
-            scale_mean = mean
+            scale_mean = np.abs(mean)
             q_mean= 1.0
-            q_std = stddev/mean
+            q_std = stddev/np.abs(mean)
         #
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
                         n_batch=n_batch,

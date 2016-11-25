@@ -211,45 +211,24 @@ class test_initial_values(unittest.TestCase):
         self.assertTrue(np.all(diag > 0.0))
 
 
+class TestGaussian(unittest.TestCase):
+    """
+    Test several initial values work with nor error
+    """
+    def test_several_inits(self):
+        m = hb.model.Model()
+        m.g1 = hb.variationals.Gaussian(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g2 = hb.variationals.Gaussian(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean=-1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g3 = hb.variationals.Gaussian(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 0.0, stddev=1.0, scale_shape=[3,2], scale_n_layers=[1,2])
 
-'''
-    def test_variational_mode(self):
-        for shape in self.shapes:
-            with self.m[shape].tf_mode():
-                 self.m[shape]._draw_samples(self.num_samples)
-            samples = self.m[shape].m._samples_post
-            with self.m[shape].tf_mode():
-                with self.m[shape].variational_mode():
-                    instance = self.m[shape].m
-            self.assertTrue(samples is not None)
-            self.assertTrue(samples is instance)
-
-
-
-
-class test_variational_deep(unittest.TestCase):
-    def setUp(self):
-
-        pass
+        with m.tf_mode():
+            g1 = m.run(m.g1)
+            g2 = m.run(m.g2)
+            g3 = m.run(m.g3)
 
 
-class test_with_variational(unittest.TestCase):
-    def setUp(self):
-        rng = np.random.RandomState(0)
-        self.m = Henbun.param.Parameterized()
-        self.m.m = Henbun.param.Parameterized()
-        # local params
-        self.local_p1 = rng.randn(10,2)
-        self.m.local_p1 = Henbun.param.Variable(self.local_p1.copy(), vtype='local_param')
-        # variational params
-        self.variational_p1 = rng.randn(4,2)
-        self.m.variational_p1 = Henbun.param.Variational(self.variational_p1)
-    def test_variationals(self):
-        vlist = self.m.sorted_variationals
-        print(vlist)
-        self.assertTrue(vlisq[0] == self.m.variational_p1)
-
-
-'''
 if __name__ == '__main__':
     unittest.main()
