@@ -9,6 +9,9 @@ int_type = int32
 
 [numerics]
 jitter_level = 1e-4
+clip_by_value = False
+clip_value_min = -50.0
+clip_value_max =  50.0
 
 [profiling]
 dump_timeline = False
