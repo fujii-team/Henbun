@@ -32,6 +32,7 @@ class test_einsum(unittest.TestCase):
 
 class test_variational(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
         self.sqrts  = {'fullrank':self.rng.randn(3,10,10),
@@ -98,6 +99,7 @@ class test_variational(unittest.TestCase):
 
 class test_variational_local(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
         self.sqrts  = {'fullrank':self.rng.randn(3,10,10,2).astype(dtype=np_float_type),
@@ -162,6 +164,7 @@ class test_variational_local(unittest.TestCase):
 
 class VariationalModel(hb.model.Model):
     def setUp(self):
+        tf.set_random_seed(0)
         self.q_global = hb.variationals.Normal(shape=[3])
         self.q_local = hb.variationals.Normal(shape=[3], collections=hb.param.graph_key.LOCAL)
         self.x = hb.param.Variable(shape=[6,10])
@@ -177,6 +180,7 @@ class VariationalModel(hb.model.Model):
 
 class test_variational_model(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         self.m = VariationalModel()
 
     def test_compile_global(self):
@@ -216,6 +220,7 @@ class TestGaussian(unittest.TestCase):
     Test several initial values work with nor error
     """
     def test_several_inits(self):
+        tf.set_random_seed(0)
         m = hb.model.Model()
         m.g1 = hb.variationals.Gaussian(shape=[3,2], n_layers=[1,2], n_batch=0,
                 mean= 1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])

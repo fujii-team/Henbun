@@ -28,6 +28,7 @@ np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
 class TransformTests(unittest.TestCase):
     def setUp(self):
+        tf.set_random_seed(0)
         tf.reset_default_graph()
         self.x = tf.placeholder(float_type)
         self.x_np = np.random.randn(10).astype(np_float_type)
