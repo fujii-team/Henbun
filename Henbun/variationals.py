@@ -19,7 +19,7 @@ from __future__ import absolute_import
 import numpy as np
 import tensorflow as tf
 from functools import reduce
-from . import transforms, priors
+from . import transforms, priors, densities
 from .param import Variable, graph_key, Parameterized
 from .scoping import NameScoped
 from ._settings import settings
@@ -103,17 +103,16 @@ class Variational(Parameterized):
             self.u = tf.random_normal(sample_shape, dtype=float_type)
             with self.tf_mode():
                 self._tensor = self._sample(self.u)
+                self.transformed_tensor = self.transform.tf_forward(self._tensor)
 
     def tensor(self):
         """
         In tf_mode, this class is seen as a sample from the variational distribution.
         """
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return self.transform.tf_forward(
-                        tf.reshape(self._tensor, self.n_layers + self._shape))
+            return  tf.reshape(self.transformed_tensor, self.n_layers + self._shape)
         else:
-            return self.transform.tf_forward(
-                        tf.reshape(self._tensor, self.n_layers + self._shape + [-1]))
+            return tf.reshape(self.transformed_tensor, self.n_layers + self._shape + [-1])
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -122,6 +121,7 @@ class Variational(Parameterized):
         sample_shape = self.n_layers + [self.size, tf.shape(x)[-1]]
         self.u = tf.random_normal(sample_shape, dtype=float_type)
         self._tensor = self._sample(self.u)
+        self.transformed_tensor = self.transform.tf_forward(self._tensor)
 
     def _sample(self, u):
         """
@@ -228,7 +228,7 @@ class Variational(Parameterized):
         kl = - 0.5 * tf.reduce_sum(np.log(2.0*np.pi) + self.logdet + tf.square(self.u))
         # - E_{q(f)}[log p(f)]
         if self.prior is not None:
-            kl -= tf.reduce_sum(self.prior.logp(self._tensor))
+            kl -= tf.reduce_sum(self.prior.logp(self.transformed_tensor))
             kl -= tf.reduce_sum(self.transform.tf_log_jacobian(self._tensor))
         return kl
 
@@ -313,3 +313,70 @@ class Gaussian(Normal):
 
     def tensor(self):
         return self.scale * Normal.tensor(self)
+
+class Beta(Variational):
+    """
+    Variational parameters with Beta prior.
+    The variational tensor is mapped to (0,1) space by Logistic function.
+    The beta prior is assumed for this distribution, where its hyperparameter
+    alpha and beta are also Variables.
+    """
+    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+                mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
+                scale_shape=None, scale_n_layers=None):
+        """
+        - shape: list or tuples indicating the shape of this parameters.
+                In the LOCAL case, the right most axis is MinibatchSize.
+                This axis can be None. In this case, we do not validate the shape.
+
+        - n_layers: List of integers indicating number of layers.
+
+        - n_batches: Integer representing number of batches. It can be None.
+                In Local case, the batch_size is automatically determined if
+                None is given. If a certain value is specified, then Local and
+                Global variables behave same.
+
+        - q_shape: one of 'diagonal' or 'fullrank'
+                If 'fullrank' is specified, correlation among 'shape' will be
+                considered.
+
+        - collections: collections for the variational parameters.
+
+        - scale_shape, scale_n_layers: list (or tuple) of integers indicating
+                        the shape of hyper parameters.
+                        By default, the scale shape is
+                        [1, 1, 1, 1, 1]
+                        with self.n_layers = [l1,l2]
+                             self.shape    = [s1,s2,s3]
+        """
+        # map mean and stddev
+        Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
+                        n_batch=n_batch,
+                        mean=mean, stddev=stddev,
+                        transform=transforms.Logistic(),
+                        collections=collections)
+        # scale shape
+        scale_shape = scale_shape or [1 for s in self._shape]
+        # scale layer
+        scale_layer = scale_n_layers or [1 for s in self.n_layers]
+        # Define scale parameter
+        self.alpha = Variable(scale_shape, n_layers = scale_layer, n_batch=n_batch,
+            mean=1.0, stddev=0.1*scale_mean, transform=transforms.positive,
+                                 collections=collections)
+        self.beta = Variable(scale_shape, n_layers = scale_layer, n_batch=n_batch,
+            mean=1.0, stddev=0.1*scale_mean, transform=transforms.positive,
+                                 collections=collections)
+
+    def _KL(self):
+        """
+        Returns the sum of Kulback-Leibler divergence for this variational object.
+        This value is gathered by Parameterized.KL()
+        """
+        #  E_{q(f)} [log q(f)]
+        kl = - 0.5 * tf.reduce_sum(np.log(2.0*np.pi) + self.logdet + tf.square(self.u))
+        # - E_{q(f)}[log p(f)]
+        if self.prior is not None:
+            kl -= tf.reduce_sum(densities.beta(self.alpha, self.beta,
+                                    self.transformed_tensor))
+            kl -= tf.reduce_sum(self.transform.tf_log_jacobian(self._tensor))
+        return kl
