@@ -43,8 +43,8 @@ class test_variational(unittest.TestCase):
         tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
-        self.sqrts  = {'fullrank':self.rng.randn(3,10,10)-0.1,
-                       'diagonal':self.rng.randn(3,10)*0.5}
+        self.sqrts  = {'fullrank':self.rng.randn(3,10,10)*0.5,
+                       'diagonal':self.rng.randn(3,10)*0.5-0.5}
         for i in range(3): # remove upper triangular part
             for j in range(10):
                 self.sqrts['fullrank'][i,j,j] = np.exp(self.sqrts['fullrank'][i,j,j])
@@ -119,7 +119,8 @@ class test_variational(unittest.TestCase):
             KL = KL/num_samples
             KL_ana = gaussian_KL(self.m[shape].m.q_mu.value,
                                  self.m[shape].m.q_sqrt.value, q_shape=shape)
-            self.assertTrue(np.allclose(KL, KL_ana, rtol=0.15))
+            print(KL, KL_ana)
+            self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
 class test_variational_local(unittest.TestCase):
     def setUp(self):
@@ -271,7 +272,7 @@ def gaussian_KL(mu, L, q_shape='diagonal'):
         mu1 = mu[i,:]
         if q_shape is 'diagonal':
             L1  = L[i,:]
-            logdet = np.sum(L1)
+            logdet = 2.0*np.sum(L1)
             trace = np.sum(np.exp(2.0*L1))
         else: # fullrank
             L1  = L[i,:,:]
@@ -279,6 +280,15 @@ def gaussian_KL(mu, L, q_shape='diagonal'):
             trace = np.sum(np.square(L1))
         KL += -logdet - n + trace + np.dot(mu1.T, mu1)
     return KL*0.5
+
+class TestBeta(unittest.TestCase):
+    """ Just make sure it works without no error """
+    def test(self):
+        self.m = hb.model.Model()
+        self.m.v = hb.variationals.Beta(shape=[3,2], n_layers=[3], n_batch=2)
+        self.m.initialize()
+        with self.m.tf_mode():
+            self.m.run(self.m.KL())
 
 if __name__ == '__main__':
     unittest.main()

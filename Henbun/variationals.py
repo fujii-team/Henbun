@@ -361,11 +361,11 @@ class Beta(Variational):
         scale_layer = scale_n_layers or [1 for s in self.n_layers]
         # Define scale parameter
         self.alpha = Variable(scale_shape, n_layers = scale_layer, n_batch=n_batch,
-            mean=1.0, stddev=0.1*scale_mean, transform=transforms.positive,
-                                 collections=collections)
+                            mean=1.0, stddev=0.1, transform=transforms.positive,
+                            collections=collections)
         self.beta = Variable(scale_shape, n_layers = scale_layer, n_batch=n_batch,
-            mean=1.0, stddev=0.1*scale_mean, transform=transforms.positive,
-                                 collections=collections)
+                            mean=1.0, stddev=0.1, transform=transforms.positive,
+                            collections=collections)
 
     def _KL(self):
         """
