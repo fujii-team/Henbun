@@ -33,9 +33,22 @@ class test_clip(unittest.TestCase):
         self.assertTrue(np.max(y) < 90)
 
 
+class test_log_sum_exp(unittest.TestCase):
+    def test(self):
+        """
+        Make sure log_sum_exp works.
+        """
+        rng = np.random.RandomState(0)
+        a = rng.randn(2,3,4)
+        b = rng.randn(2,3,4)
+        c = rng.randn(2,3,4)
 
-"""
-In this test, we make sure n.n. model works fine.
-"""
+        with tf.Session() as sess:
+            value = sess.run(
+                 hb.tf_wraps.log_sum_exp(tf.pack([a, b, c], axis=1), axis=1))
+        value_np = np.log(np.exp(a)+np.exp(b)+np.exp(c))
+        self.assertTrue(np.allclose(value, value_np))
+
+
 if __name__ == '__main__':
     unittest.main()

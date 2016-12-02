@@ -314,6 +314,29 @@ class Gaussian(Normal):
     def tensor(self):
         return self.scale * Normal.tensor(self)
 
+class OffsetGaussian(Gaussian):
+    """
+    Variational parameters with Gaussian prior with offset.
+    """
+    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+                mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
+                scale_shape=None, scale_n_layers=None):
+
+        Gaussian.__init__(self,
+            shape=shape, n_layers=n_layers, n_batch=n_batch,
+            q_shape=q_shape, mean=0.0, stddev=stddev, collections=collections,
+            scale_shape=scale_shape, scale_n_layers=scale_n_layers)
+        # scale shape
+        offset_shape = scale_shape or [1 for s in self._shape]
+        # scale layer
+        offset_layer = scale_n_layers or [1 for s in self.n_layers]
+        # Define scale parameter
+        self.offset = Variable(offset_shape, n_layers = offset_layer, n_batch=n_batch,
+            mean=mean, stddev=0.1*mean, collections=collections)
+
+    def tensor(self):
+        return Gaussian.tensor(self) + self.offset
+
 class Beta(Variational):
     """
     Variational parameters with Beta prior.
