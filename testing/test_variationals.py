@@ -258,6 +258,25 @@ class TestGaussian(unittest.TestCase):
             g2 = m.run(m.g2)
             g3 = m.run(m.g3)
 
+class TestBeta(unittest.TestCase):
+    """
+    Test several initial values work with no error
+    """
+    def test_several_inits(self):
+        tf.set_random_seed(0)
+        m = hb.model.Model()
+        m.g1 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g2 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean=-1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g3 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 0.0, stddev=1.0, scale_shape=[3,2], scale_n_layers=[1,2])
+
+        with m.tf_mode():
+            g1 = m.run(m.g1)
+            g2 = m.run(m.g2)
+            g3 = m.run(m.g3)
+
 def gaussian_KL(mu, L, q_shape='diagonal'):
     """
     Estimate analytical KL[p||q]
