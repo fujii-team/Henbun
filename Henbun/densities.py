@@ -95,9 +95,9 @@ def bimixture(fraction, logp0, logp1):
     """
     Calculates log of mixture probability,
     log(fraction*exp(logp0) + (1-fraction)*exp(logp1))
+
+    fraction: real tensor in [0,1]
     """
-    frac0 = tf.sigmoid(fraction)
-    frac1 = 1.0-frac0
     return log_sum_exp(tf.pack(
-                values=[logp0+tf.log(frac0), logp1+tf.log(frac1)], axis=-1),
+                values=[logp0+tf.log(fraction), logp1+tf.log(1.0-fraction)], axis=-1),
                 axis=-1)

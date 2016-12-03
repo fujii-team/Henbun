@@ -17,20 +17,26 @@ class test_clip(unittest.TestCase):
             m = hb.model.Model()
             m.nn = hb.nn.NeuralNet([100,99,98], neuron_types=tf.nn.relu,
                                     stddev=1.0)
+            m.v = hb.variationals.Gaussian([100], stddev=100.0, mean=100.0)
             m.initialize()
             with m.tf_mode():
                 y = m.run(m.nn(x))
+                v = m.run(m.v)
         self.assertTrue(np.max(y) > 90)
+        self.assertTrue(np.max(v) > 90)
         # --- clip enabled ---
         custom_config.numerics.clip_by_value = True
         with hb.settings.temp_settings(custom_config):
             m = hb.model.Model()
             m.nn = hb.nn.NeuralNet([100,99,98], neuron_types=tf.nn.relu,
                                     stddev=1.0)
+            m.v = hb.variationals.Gaussian([100], stddev=100.0, mean=100.0)
             m.initialize()
             with m.tf_mode():
                 y = m.run(m.nn(x))
+                v = m.run(m.v)
         self.assertTrue(np.max(y) < 90)
+        self.assertTrue(np.max(v) > 90)
 
 
 class test_log_sum_exp(unittest.TestCase):

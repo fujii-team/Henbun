@@ -9,14 +9,13 @@ class test_bimixture(unittest.TestCase):
         rng = np.random.RandomState(0)
         a = rng.randn(2,3,4)
         b = rng.randn(2,3,4)
-        frac = rng.randn(2,1,1)
+        frac = rng.uniform(size=(2,1,1))
 
         with tf.Session() as sess:
-            logp0 = sess.run(hb.densities.gaussian(a.astype(np.float32), 0.0, 1.0))
-            logp1 = sess.run(hb.densities.student_t(b.astype(np.float32), 0.0, 1.0, 3.0))
+            logp0 = sess.run(hb.densities.gaussian(a.astype(np.float32), 0.0, 2.0))
+            logp1 = sess.run(hb.densities.student_t(b.astype(np.float32), 0.0, 2.0, 3.0))
             logp_mix = sess.run(hb.densities.bimixture(frac.astype(np.float32), logp0, logp1))
 
-        frac = 1.0/(1.0+np.exp(-frac))
         logp_np = np.log(frac*np.exp(logp0)+(1-frac)*np.exp(logp1))
         self.assertTrue(np.allclose(logp_mix, logp_np))
 

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 import numpy as np
 import tensorflow as tf
 from functools import reduce
+from .tf_wraps import clip
 from . import transforms, priors, densities
 from .param import Variable, graph_key, Parameterized
 from .scoping import NameScoped
@@ -110,9 +111,9 @@ class Variational(Parameterized):
         In tf_mode, this class is seen as a sample from the variational distribution.
         """
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return  tf.reshape(self.transformed_tensor, self.n_layers + self._shape)
+            return  clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape))
         else:
-            return tf.reshape(self.transformed_tensor, self.n_layers + self._shape + [-1])
+            return clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape + [-1]))
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
