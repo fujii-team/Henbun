@@ -238,7 +238,9 @@ class Optimizer(object):
         self.optimize_op = None
 
     def compile(self, optimizer = tf.train.AdamOptimizer(),
-                collection=graph_key.VARIABLES, global_step=None):
+                global_step=None, collection=graph_key.VARIABLES,
+                gate_gradients=1, aggregation_method=None,
+                colocate_gradients_with_ops=False, grad_loss=None):
         """
         Create self.method_op and self.optimize_op.
         args:
@@ -252,7 +254,10 @@ class Optimizer(object):
         with self.model.tf_mode():
             self.method_op = self.likelihood_method(self.model)
             self.optimize_op = optimizer.minimize(tf.neg(self.method_op),
-                                    var_list=var_list, global_step=global_step)
+                    global_step=global_step, var_list=var_list,
+                    gate_gradients=gate_gradients, aggregation_method=aggregation_method,
+                    colocate_gradients_with_ops=colocate_gradients_with_ops,
+                    grad_loss=grad_loss)
         # manual initialization.
         self.model.initialize()
         # initialize un-initialized variable
