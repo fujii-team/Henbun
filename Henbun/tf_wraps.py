@@ -38,6 +38,15 @@ def clip(tensor):
     else:
         return tensor
 
+
+def log_sum_exp(tensor, axis=-1):
+    """
+    Get log_sum_exp along axis.
+    """
+    maxtensor = tf.reduce_max(tensor, axis, keep_dims=True)
+    return tf.squeeze(maxtensor, [axis]) + \
+        tf.log(tf.reduce_sum(tf.exp(tensor-maxtensor), axis, keep_dims=False))
+
 '''
 _custom_op_module = tf.load_op_library(os.path.join(os.path.dirname(__file__), 'tfops', 'matpackops.so'))
 vec_to_tri = _custom_op_module.vec_to_tri

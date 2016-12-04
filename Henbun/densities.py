@@ -17,6 +17,7 @@
 
 import tensorflow as tf
 import numpy as np
+from .tf_wraps import log_sum_exp
 from ._settings import settings
 float_type = settings.dtypes.float_type
 
@@ -88,3 +89,15 @@ def multivariate_normal(x, mu, L):
     ret += - num_col * tf.reduce_sum(tf.log(tf.diag_part(L)))
     ret += - 0.5 * tf.reduce_sum(tf.square(alpha))
     return ret
+
+
+def bimixture(fraction, logp0, logp1):
+    """
+    Calculates log of mixture probability,
+    log(fraction*exp(logp0) + (1-fraction)*exp(logp1))
+
+    fraction: real tensor in [0,1]
+    """
+    return log_sum_exp(tf.pack(
+                values=[logp0+tf.log(fraction), logp1+tf.log(1.0-fraction)], axis=-1),
+                axis=-1)

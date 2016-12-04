@@ -17,25 +17,44 @@ class test_clip(unittest.TestCase):
             m = hb.model.Model()
             m.nn = hb.nn.NeuralNet([100,99,98], neuron_types=tf.nn.relu,
                                     stddev=1.0)
+            m.v = hb.variationals.Gaussian([100], stddev=100.0, mean=100.0)
             m.initialize()
             with m.tf_mode():
                 y = m.run(m.nn(x))
+                v = m.run(m.v)
         self.assertTrue(np.max(y) > 90)
+        self.assertTrue(np.max(v) > 90)
         # --- clip enabled ---
         custom_config.numerics.clip_by_value = True
         with hb.settings.temp_settings(custom_config):
             m = hb.model.Model()
             m.nn = hb.nn.NeuralNet([100,99,98], neuron_types=tf.nn.relu,
                                     stddev=1.0)
+            m.v = hb.variationals.Gaussian([100], stddev=100.0, mean=100.0)
             m.initialize()
             with m.tf_mode():
                 y = m.run(m.nn(x))
+                v = m.run(m.v)
         self.assertTrue(np.max(y) < 90)
+        self.assertTrue(np.max(v) > 90)
 
 
+class test_log_sum_exp(unittest.TestCase):
+    def test(self):
+        """
+        Make sure log_sum_exp works.
+        """
+        rng = np.random.RandomState(0)
+        a = rng.randn(2,3,4)
+        b = rng.randn(2,3,4)
+        c = rng.randn(2,3,4)
 
-"""
-In this test, we make sure n.n. model works fine.
-"""
+        with tf.Session() as sess:
+            value = sess.run(
+                 hb.tf_wraps.log_sum_exp(tf.pack([a, b, c], axis=1), axis=1))
+        value_np = np.log(np.exp(a)+np.exp(b)+np.exp(c))
+        self.assertTrue(np.allclose(value, value_np))
+
+
 if __name__ == '__main__':
     unittest.main()

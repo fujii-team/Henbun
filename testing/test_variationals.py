@@ -4,10 +4,14 @@ import numpy as np
 import unittest
 import Henbun as hb
 from Henbun._settings import settings
+from scipy.linalg import solve_triangular
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
 class test_einsum(unittest.TestCase):
+    """
+    Test variationals.einsum works fine
+    """
     def test_matmul(self):
         v_global = hb.variationals.Normal((2,3),
             n_layers=[2,3], q_shape='fullrank')
@@ -31,18 +35,22 @@ class test_einsum(unittest.TestCase):
         self.assertTrue(v_local._einsum_diag() == einsum_local_ref)
 
 class test_variational(unittest.TestCase):
+    """
+    Test variationals works fine
+    """
     def setUp(self):
+        """ Prepare fullrank and diagonal variationals """
         tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
-        self.sqrts  = {'fullrank':self.rng.randn(3,10,10),
-                       'diagonal':self.rng.randn(3,10)}
+        self.sqrts  = {'fullrank':self.rng.randn(3,10,10)*0.5,
+                       'diagonal':self.rng.randn(3,10)*0.5-0.5}
         for i in range(3): # remove upper triangular part
             for j in range(10):
                 self.sqrts['fullrank'][i,j,j] = np.exp(self.sqrts['fullrank'][i,j,j])
                 for k in range(j+1,10):
                     self.sqrts['fullrank'][i,j,k] = 0.
-        self.x = self.rng.randn(3,10)
+        self.x = self.rng.randn(3,10)*0.3
         self.m = {}
         for shape in self.shapes:
             self.m[shape] = hb.model.Model()
@@ -57,10 +65,12 @@ class test_variational(unittest.TestCase):
             self.m[shape].initialize()
 
     def test_parent(self):
+        """ make sure its parent is model """
         for shape in self.shapes:
             self.assertTrue(self.m[shape].m._parent is self.m[shape])
 
     def test_logdet(self):
+        """ make sure logdet is calculated correctly """
         # true solution
         logdets = {'fullrank':np.zeros((3,10)), 'diagonal': np.zeros((3,10))}
         for i in range(3):
@@ -76,6 +86,7 @@ class test_variational(unittest.TestCase):
             self.assertTrue(np.allclose(logdet, logdets[shape]))
 
     def test_project_samples(self):
+        """ make sure project_samples is calculated correctly """
         # true samples
         samples_post = {'fullrank': np.zeros((3,10)),
                         'diagonal': np.zeros((3,10))}
@@ -96,6 +107,20 @@ class test_variational(unittest.TestCase):
             self.assertTrue(np.allclose(project_samples, samples_post[shape]))
             # check if _tensor is created
             self.assertTrue(isinstance(self.m[shape].m._tensor, tf.Tensor))
+
+    def test_KL(self):
+        """ Compare with analytical KL """
+        for shape in self.shapes:
+            KL = 0.0
+            num_samples=100
+            with self.m[shape].tf_mode():
+                for i in range(num_samples):
+                    KL += self.m[shape].run(self.m[shape].KL())
+            KL = KL/num_samples
+            KL_ana = gaussian_KL(self.m[shape].m.q_mu.value,
+                                 self.m[shape].m.q_sqrt.value, q_shape=shape)
+            print(KL, KL_ana)
+            self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
 class test_variational_local(unittest.TestCase):
     def setUp(self):
@@ -214,10 +239,9 @@ class test_initial_values(unittest.TestCase):
         diag = np.diagonal(sqrt)
         self.assertTrue(np.all(diag > 0.0))
 
-
 class TestGaussian(unittest.TestCase):
     """
-    Test several initial values work with nor error
+    Test several initial values work with no error
     """
     def test_several_inits(self):
         tf.set_random_seed(0)
@@ -234,6 +258,56 @@ class TestGaussian(unittest.TestCase):
             g2 = m.run(m.g2)
             g3 = m.run(m.g3)
 
+class TestBeta(unittest.TestCase):
+    """
+    Test several initial values work with no error
+    """
+    def test_several_inits(self):
+        tf.set_random_seed(0)
+        m = hb.model.Model()
+        m.g1 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g2 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean=-1.0, stddev=0.5, scale_shape=[3,2], scale_n_layers=[1,2])
+        m.g3 = hb.variationals.Beta(shape=[3,2], n_layers=[1,2], n_batch=0,
+                mean= 0.0, stddev=1.0, scale_shape=[3,2], scale_n_layers=[1,2])
+
+        with m.tf_mode():
+            g1 = m.run(m.g1)
+            g2 = m.run(m.g2)
+            g3 = m.run(m.g3)
+
+def gaussian_KL(mu, L, q_shape='diagonal'):
+    """
+    Estimate analytical KL[p||q]
+    where p = N(mu,L L^T) and q = N(0,I)
+    arg:
+    - mu: mean vector. np.array sized [N,n]
+    - L : cholesky matrix. np.array sized [N,n,n],
+    """
+    KL = 0.0
+    for i in range(mu.shape[0]):
+        n = mu.shape[1]
+        mu1 = mu[i,:]
+        if q_shape is 'diagonal':
+            L1  = L[i,:]
+            logdet = 2.0*np.sum(L1)
+            trace = np.sum(np.exp(2.0*L1))
+        else: # fullrank
+            L1  = L[i,:,:]
+            logdet = np.sum(np.log(np.diagonal(L1)))
+            trace = np.sum(np.square(L1))
+        KL += -logdet - n + trace + np.dot(mu1.T, mu1)
+    return KL*0.5
+
+class TestBeta(unittest.TestCase):
+    """ Just make sure it works without no error """
+    def test(self):
+        self.m = hb.model.Model()
+        self.m.v = hb.variationals.Beta(shape=[3,2], n_layers=[3], n_batch=2)
+        self.m.initialize()
+        with self.m.tf_mode():
+            self.m.run(self.m.KL())
 
 if __name__ == '__main__':
     unittest.main()
