@@ -552,6 +552,30 @@ class Parameterized(Parentable):
         else:
             return reduce(tf.add, KL_list)
 
+    def save(self, save_path = None, global_step = None):
+        """
+        Returns: path of the saved-file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        #
+        assert self.highest_parent._saver is not None
+        # do initialization for the case variables are not initialized.
+        self.highest_parent.initialize()
+        # save
+        return self.highest_parent._saver.save(self.highest_parent._session,
+                                            save_path, global_step)
+
+    def restore(self, save_path=None):
+        """
+        Restore the parameter from file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        assert self.highest_parent._saver is not None
+        self.highest_parent._saver.restore(self.highest_parent._session, save_path)
+        # raise down the initialized flag
+        [v.finalize() for v in self.get_variables()]
 
 class ParamList(Parameterized):
     """
