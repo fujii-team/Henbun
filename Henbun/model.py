@@ -240,7 +240,8 @@ class Optimizer(object):
     def compile(self, optimizer = tf.train.AdamOptimizer(),
                 global_step=None, collection=graph_key.VARIABLES,
                 gate_gradients=1, aggregation_method=None,
-                colocate_gradients_with_ops=False, grad_loss=None):
+                colocate_gradients_with_ops=False, name=None, grad_loss=None,
+                clip_gradients=None):
         """
         Create self.method_op and self.optimize_op.
         args:
@@ -248,16 +249,20 @@ class Optimizer(object):
         - collection: variable collection that will be optimized.
         - global_step: If want to decrease learning rate, global_step can be
                         passed.
+        - clip_gradients: None or finite positive values.
+                        If values are specified, gradients are clipped
+                        so that its absolute are less than this value.
         """
         print('compiling...')
         var_list = self.model.get_tf_variables(collection)
         with self.model.tf_mode():
             self.method_op = self.likelihood_method(self.model)
-            self.optimize_op = optimizer.minimize(tf.neg(self.method_op),
-                    global_step=global_step, var_list=var_list,
-                    gate_gradients=gate_gradients, aggregation_method=aggregation_method,
-                    colocate_gradients_with_ops=colocate_gradients_with_ops,
-                    grad_loss=grad_loss)
+            grads_and_vars = optimizer.compute_gradients(tf.neg(self.method_op), var_list,
+                gate_gradients=gate_gradients, aggregation_method=aggregation_method,
+                colocate_gradients_with_ops=colocate_gradients_with_ops, grad_loss=grad_loss)
+            if clip_gradients is not None:
+                grads_and_vars = [(tf.clip_by_value(gv[0], -clip_gradients, clip_gradients) if gv[0] is not None else None, gv[1]) for gv in grads_and_vars]
+            self.optimize_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
         # manual initialization.
         self.model.initialize()
         # initialize un-initialized variable
