@@ -50,7 +50,7 @@ class TransformTests(unittest.TestCase):
         ys_np = [t.forward(self.x_np) for t in self.transforms]
         xs_np = [t.backward(y) for t, y in zip(self.transforms, ys_np)]
         for x in xs_np:
-            self.assertTrue(np.allclose(x, self.x_np))
+            self.assertTrue(np.allclose(x, self.x_np, atol=1.0e-4))
 
     def test_logjac(self):
         """
