@@ -64,6 +64,14 @@ class test_variational(unittest.TestCase):
         for shape in self.shapes:
             self.m[shape].initialize()
 
+    def test_get_variables(self):
+        """ Test get_variables certainly works even if in tf_mode """
+        for shape in self.shapes:
+            with self.m[shape].tf_mode():
+                variables = self.m[shape].get_variables()
+            self.assertTrue(self.m[shape].m.q_mu in variables)
+            self.assertTrue(self.m[shape].m.q_sqrt in variables)
+
     def test_parent(self):
         """ make sure its parent is model """
         for shape in self.shapes:
@@ -155,6 +163,14 @@ class test_variational_local(unittest.TestCase):
             self.m[shape].initialize()
         # immitate _draw_samples
         self.samples_iid = self.rng.randn(3,10,2).astype(np_float_type)
+
+    def test_get_variables(self):
+        """ Test get_variables certainly works even if in tf_mode """
+        for shape in self.shapes:
+            with self.m[shape].tf_mode():
+                variables = self.m[shape].get_variables(hb.param.graph_key.LOCAL)
+            self.assertTrue(self.m[shape].m.q_mu in variables)
+            self.assertTrue(self.m[shape].m.q_sqrt in variables)
 
     def test_logdet(self):
         # true solution
