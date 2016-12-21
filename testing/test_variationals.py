@@ -169,8 +169,15 @@ class test_variational_local(unittest.TestCase):
         for shape in self.shapes:
             with self.m[shape].tf_mode():
                 variables = self.m[shape].get_variables(hb.param.graph_key.LOCAL)
+                feed_size = self.m[shape].feed_size
+                # test feed certainly works
+                self.m[shape].feed(self.rng.randn(3, feed_size, 100).astype(np_float_type))
+            # check feed_size is the same in tf_mode
+            self.assertTrue(feed_size == self.m[shape].feed_size)
             self.assertTrue(self.m[shape].m.q_mu in variables)
             self.assertTrue(self.m[shape].m.q_sqrt in variables)
+            # check certainly variational.feed works
+            self.assertTrue(hasattr(self.m[shape].m, '_tensor'))
 
     def test_logdet(self):
         # true solution
