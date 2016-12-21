@@ -39,6 +39,11 @@ An example as an deep-learning framework.
 An example as an large scale Bayesian inference with feed-forward network.
 
 
+# Structure of Henbun
+In the following notebooks, some structures of Henbun are described.
++ Brief description about optimization [(Henbun_structure)](notebooks/Henbun_structure.ipynb).
++ Brief description about variational inference [(Henbun_structure2)](notebooks/Henbun_structure2.ipynb).
+
 
 # Dependencies and Installation
 **Henbun** heavily depends on
