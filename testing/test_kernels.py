@@ -13,20 +13,24 @@ class RefStationary(object):
 
     def square_dist(self, X, X2):
         if len(X.shape)==3: # batched case
-            dist = np.zeros((X.shape[0], X2.shape[0], X.shape[2]))
+            dist = np.zeros((X.shape[2], X.shape[0], X2.shape[0]))
             l = self.lengthscales.reshape(-1,1)
+            for i in range(X.shape[0]):
+                for j in range(X2.shape[0]):
+                    x_dif = ((X[i] - X2[j])/l).T # [N,d]
+                    dist[:,i,j] = np.sum(x_dif*x_dif, axis=-1)
         else: # non-batched case
             dist = np.zeros((X.shape[0], X2.shape[0]))
             l = self.lengthscales
-        for i in range(X.shape[0]):
-            for j in range(X2.shape[0]):
-                x_dif = (X[i] - X2[j])/l
-                dist[i,j] = np.sum(x_dif*x_dif, axis=0)
+            for i in range(X.shape[0]):
+                for j in range(X2.shape[0]):
+                    x_dif = (X[i] - X2[j])/l
+                    dist[i,j] = np.sum(x_dif*x_dif, axis=-1)
         return dist
 
     def Kdiag(self, X):
         if len(X.shape)==3: # batched case
-            return np.ones((X.shape[0], X.shape[2]))
+            return np.ones((X.shape[2], X.shape[0]))
         else:
             return np.ones((X.shape[0]))
 
@@ -129,14 +133,14 @@ class test_kernel_global(unittest.TestCase):
             chol2 = self.m._session.run(self.m.k2.Cholesky(self.X_batch))
         # check shape
         self.assertTrue(np.allclose(chol1.shape,
-            [self.X_batch.shape[0], self.X_batch.shape[0], self.X_batch.shape[-1]]))
+            [self.X_batch.shape[-1], self.X_batch.shape[0], self.X_batch.shape[0]]))
         self.assertTrue(np.allclose(chol2.shape,
-            [self.X_batch.shape[0], self.X_batch.shape[0], self.X_batch.shape[-1]]))
-        for i in range(self.X_batch.shape[-1]):
-            self.assertTrue(np.allclose(K1[...,i],
-                                np.matmul(chol1[...,i], chol1[...,i].T), atol=1.0e-4))
-            self.assertTrue(np.allclose(K2[...,i],
-                                np.matmul(chol2[...,i], chol2[...,i].T), atol=1.0e-4))
+            [self.X_batch.shape[-1], self.X_batch.shape[0], self.X_batch.shape[0]]))
+        for i in range(self.X_batch.shape[0]):
+            self.assertTrue(np.allclose(K1[i,...],
+                                np.matmul(chol1[i,...], chol1[i,...].T), atol=1.0e-4))
+            self.assertTrue(np.allclose(K2[i,...],
+                                np.matmul(chol2[i,...], chol2[i,...].T), atol=1.0e-4))
 
 if __name__ == '__main__':
     unittest.main()
