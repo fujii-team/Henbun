@@ -87,7 +87,10 @@ class test_kernel_global(unittest.TestCase):
         self.assertTrue(np.allclose(K2, self.k2_ref.K(self.X,self.X2), atol=1.0e-4))
         # test if gradients works
         with self.m.tf_mode():
-            grad = tf.gradients(K1, tf.trainable_variables())
+            loss = tf.reduce_sum(self.m.k2.K(self.X, self.X2))
+            grad = tf.gradients(loss, self.m.get_tf_variables())
+        grads = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(grad)>0)
 
     def test_K2_batch(self):
         # non-batch case
@@ -123,7 +126,10 @@ class test_kernel_global(unittest.TestCase):
         self.assertTrue(np.allclose(K1, np.matmul(chol1, chol1.T), atol=9.0e-4))
         self.assertTrue(np.allclose(K2, np.matmul(chol2, chol2.T), atol=9.0e-4))
         with self.m.tf_mode():
-            grad = tf.gradients(chol1, tf.trainable_variables())
+            loss = tf.reduce_sum(self.m.k1.Cholesky(self.X))
+            grad = tf.gradients(loss, self.m.get_tf_variables())
+        grads = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(grad)>0)
 
     def test_cholesky_batch(self):
         with self.m.tf_mode():
