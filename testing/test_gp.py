@@ -15,10 +15,10 @@ class test_gp(hb.model.Model):
         self.m.gp = hb.gp.GP(
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # sparse gp
-        self.m.sparse_gp = hp.gp.SparseGP(z=z = np.linspace(0,1.0,60).reshape(-1,2),
+        self.m.sparse_gp = hp.gp.SparseGP(z= np.linspace(0,1.0,60).reshape(-1,2),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
-        self.m.u = hb.variationals.Normal(shape=[30,100])
+        self.m.u = hb.variationals.Normal(shape=[30,20])
 
     def test_dense(self):
         x = tf.constant(self.rng.randn(40,2), dtype=float_type)
@@ -30,7 +30,7 @@ class test_gp(hb.model.Model):
             grad = tf.gradients(tf.reduce_sum(samples*samples),
                                     self.m.get_tf_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,100]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -45,13 +45,21 @@ class test_gp(hb.model.Model):
             grad = tf.gradients(tf.reduce_sum(samples*samples),
                                     self.m.get_tf_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,100]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
 
+        # test other approximation methods
+        for q_shape in ['neglect', 'fullrank']:
+            with self.m.tf_mode():
+                # just test works fine
+                samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
+            # assert shape
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+
     def test_batch(self):
-        x = tf.constant(self.rng.randn(40,2,100), dtype=float_type)
+        x = tf.constant(self.rng.randn(40,2,20), dtype=float_type)
         self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
@@ -59,10 +67,17 @@ class test_gp(hb.model.Model):
             # make sure gradients certainly works
             grad = tf.gradients(samples, tf.trainable_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,100]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
+        # test other approximation methods
+        for q_shape in ['neglect', 'fullrank']:
+            with self.m.tf_mode():
+                # just test works fine
+                samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
+            # assert shape
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
 
 
 class gp(hb.model.Model):
