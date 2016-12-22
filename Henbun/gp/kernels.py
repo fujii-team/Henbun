@@ -74,7 +74,7 @@ class UnitStationary(Kern):
         l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
 
         Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
-        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [n,N]
+        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,N]
         if X2 is None:
             # batched case : [N,n,d]@[N,d,n]->[N,n,n]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
@@ -119,6 +119,33 @@ class UnitStationary(Kern):
 class UnitRBF(UnitStationary):
     """
     The radial basis function (RBF) or squared exponential kernel
+                     (x-x2)^2
+    K(x,x2) = exp(- ----------)
+                     2 * l^2
     """
     def K(self, X, X2=None):
         return tf.exp(-self.square_dist(X, X2)/2)
+
+class UnitCsymRBF(UnitStationary):
+    """
+    The squared exponential kernel in cylindrically symmetric space.
+                     (x-x2)^2            (x+x2)^2
+    K(x,x2) = exp(- ----------) + exp(- ----------)
+                     2 * l^2             2 * l^2
+    The second term indicates the correlation between the opsite
+    side of the point against the axis x=0.
+    """
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+        return tf.exp(-self.square_dist(X,  X2)/2)\
+             + tf.exp(-self.square_dist(X, -X2)/2)
+
+    def Kdiag(self, X):
+        # match lengthscales in batched case
+        def fn1(): return self.lengthscales
+        def fn2(): return tf.expand_dims(self.lengthscales, -1)
+        l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
+        Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
+        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,n]
+        return tf.ones_like(Xs, dtype=float_type) + tf.exp(-2*Xs)
