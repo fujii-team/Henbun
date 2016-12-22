@@ -58,23 +58,17 @@ class NeuralNet(Parameterized):
         else:
             self.neuron_types = neuron_types
         # --- define matrices and biases ---
+        self._matbias_list = []
         for i in range(len(nodes)-1):
-            key = 'matbias' + str(i)
-            name_matbias = self.name + str('.matbias')
-            setattr(self, key, MatBias(nodes=[nodes[i], nodes[i+1]],
+            matbias = MatBias(nodes=[nodes[i], nodes[i+1]],
                             n_layers=n_layers,
                             mean=mean, stddev=stddev,
                             variable = variable_types[i],
-                            collections=collections))
-
-    def matmul(self, i, x):
-        """
-        Returns W*x + b for i-th layer
-        This method should be executed in tf_mode
-        """
-        key = 'matbias' + str(i)
-        matbias = getattr(self, key)
-        return matbias(x)
+                            collections=collections)
+            self._matbias_list.append(matbias)
+            key = 'matbias' + str(i)
+            name_matbias = self.name + str('.matbias')
+            setattr(self, key, matbias)
 
     def __call__(self, x):
         """
@@ -86,5 +80,8 @@ class NeuralNet(Parameterized):
         for i in range(len(self.nodes)-2):
             typ = self.neuron_types[i]
             name_nn = None if self.name is None else self.name + str('.nn')+str(i)
-            y = typ(self.matmul(i,y), name=name_nn)
-        return self.matmul(len(self.nodes)-2, y)
+            y = typ(self._matbias_list[i](y), name=name_nn)
+        return self._matbias_list[-1](y)
+
+    def __getitem__(self, i):
+        return self._matbias_list[i]
