@@ -271,6 +271,9 @@ class Variable(Parentable):
         `hb.model.Model`
         """
         assert(hasattr(self.highest_parent, '_session'))
+        if self._assigned and self.collections not in graph_key.not_parameters:
+            self.highest_parent.run(self._initialize_op)
+            self.finalize()
         return self.highest_parent.run(self.tensor())
 
     @property
