@@ -7,7 +7,7 @@ from Henbun._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32
 
-class test_gp(hb.model.Model):
+class test_gp(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.RandomState(0)
         self.m = hb.model.Model()
@@ -21,7 +21,7 @@ class test_gp(hb.model.Model):
         self.m.u = hb.variationals.Normal(shape=[30,20])
 
     def test_dense(self):
-        x = tf.constant(self.rng.randn(40,2), dtype=float_type)
+        x = tf.constant(self.rng.randn(30,2), dtype=float_type)
         self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
@@ -30,7 +30,7 @@ class test_gp(hb.model.Model):
             grad = tf.gradients(tf.reduce_sum(samples*samples),
                                     self.m.get_tf_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [30,20]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -51,7 +51,7 @@ class test_gp(hb.model.Model):
         self.assertTrue(len(gvalues)>0)
 
         # test other approximation methods
-        for q_shape in ['neglect', 'fullrank']:
+        for q_shape in ['neglected', 'fullrank']:
             with self.m.tf_mode():
                 # just test works fine
                 samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
@@ -72,7 +72,7 @@ class test_gp(hb.model.Model):
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
         # test other approximation methods
-        for q_shape in ['neglect', 'fullrank']:
+        for q_shape in ['neglected', 'fullrank']:
             with self.m.tf_mode():
                 # just test works fine
                 samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
