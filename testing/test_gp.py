@@ -7,6 +7,79 @@ from Henbun._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32
 
+class test_gp(unittest.TestCase):
+    def setUp(self):
+        self.rng = np.random.RandomState(0)
+        self.m = hb.model.Model()
+        # dense gp
+        self.m.gp = hb.gp.GP(
+            kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
+        # sparse gp
+        self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(0,1.0,60).reshape(-1,2),
+            kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
+        # variational posterior
+        self.m.u = hb.variationals.Normal(shape=[30,20])
+
+    def test_dense(self):
+        x = tf.constant(self.rng.randn(30,2), dtype=float_type)
+        self.m.initialize()
+        with self.m.tf_mode():
+            # just test works fine
+            samples = self.m.gp.samples(x, self.m.u)
+            # make sure gradients certainly works
+            grad = tf.gradients(tf.reduce_sum(samples*samples),
+                                    self.m.get_tf_variables())
+        # assert shape
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [30,20]))
+        # assert grad certainly works
+        gvalues = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(gvalues)>0)
+
+    def test_non_batch_sparse(self):
+        x = tf.constant(self.rng.randn(40,2), dtype=float_type)
+        self.m.initialize()
+        with self.m.tf_mode():
+            # just test works fine
+            samples = self.m.sparse_gp.samples(x, self.m.u)
+            # make sure gradients certainly works
+            grad = tf.gradients(tf.reduce_sum(samples*samples),
+                                    self.m.get_tf_variables())
+        # assert shape
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+        # assert grad certainly works
+        gvalues = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(gvalues)>0)
+
+        # test other approximation methods
+        for q_shape in ['neglected', 'fullrank']:
+            with self.m.tf_mode():
+                # just test works fine
+                samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
+            # assert shape
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+
+    def test_batch(self):
+        x = tf.constant(self.rng.randn(40,2,20), dtype=float_type)
+        self.m.initialize()
+        with self.m.tf_mode():
+            # just test works fine
+            samples = self.m.sparse_gp.samples(x, self.m.u)
+            # make sure gradients certainly works
+            grad = tf.gradients(samples, tf.trainable_variables())
+        # assert shape
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+        # assert grad certainly works
+        gvalues = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(gvalues)>0)
+        # test other approximation methods
+        for q_shape in ['neglected', 'fullrank']:
+            with self.m.tf_mode():
+                # just test works fine
+                samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
+            # assert shape
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+
+
 class gp(hb.model.Model):
     def setUp(self):
         rng = np.random.RandomState(0)
@@ -40,7 +113,7 @@ class gp(hb.model.Model):
         return hb.densities.multivariate_normal(self.Y, tf.zeros_like(self.Y, float_type), L)
 
 
-class test_gp(unittest.TestCase):
+class test_gpr(unittest.TestCase):
     def test(self):
         tf.set_random_seed(0)
         m = gp()
