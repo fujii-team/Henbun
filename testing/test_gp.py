@@ -15,7 +15,7 @@ class test_gp(hb.model.Model):
         self.m.gp = hb.gp.GP(
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # sparse gp
-        self.m.sparse_gp = hp.gp.SparseGP(z= np.linspace(0,1.0,60).reshape(-1,2),
+        self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(0,1.0,60).reshape(-1,2),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
         self.m.u = hb.variationals.Normal(shape=[30,20])
