@@ -271,6 +271,9 @@ class Variable(Parentable):
         `hb.model.Model`
         """
         assert(hasattr(self.highest_parent, '_session'))
+        if self._assigned and self.collections not in graph_key.not_parameters:
+            self.highest_parent.run(self._initialize_op)
+            self.finalize()
         return self.highest_parent.run(self.tensor())
 
     @property
@@ -512,8 +515,9 @@ class Parameterized(Parentable):
         """
         Feed tensor x into all the child LocalVariable
         """
-        # --- assertion ---
-        assert len(self.get_variables(graph_key.LOCAL))>0
+        # --- skip if this object does not have LOCAL parameters ---
+        if len(self.get_variables(graph_key.LOCAL))==0:
+            return
         n_layers=self.get_variables(graph_key.LOCAL)[0].n_layers
         for p in self.get_variables(graph_key.LOCAL):
             assert len(p.n_layers) == len(n_layers)
@@ -523,7 +527,7 @@ class Parameterized(Parentable):
         # offset
         begin = np.zeros(len(n_layers) + 2)
         size = -np.ones(len(n_layers) + 2)
-        for p in self.get_variables(graph_key.LOCAL):
+        for p in self.sorted_variables:
             size[-2] = p.feed_size
             p.feed(tf.slice(x, tf.convert_to_tensor(begin, dtype=tf.int32),
                                tf.convert_to_tensor(size,  dtype=tf.int32)))

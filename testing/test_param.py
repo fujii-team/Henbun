@@ -51,17 +51,25 @@ class ParamTestsScalar(unittest.TestCase):
         self.assertTrue(self.m.q._tensor not in self.m.get_tf_variables(hb.param.graph_key.VARIABLES))
 
     def testAssign(self):
-        self.m.initialize()
         before = self.m.p.value
         self.m.p = 3.0
         self.assertTrue(self.m.p._assigned)
         self.assertTrue(isinstance(self.m.p, hb.param.Variable))
-        self.m.initialize()
         after = self.m.p.value
         self.assertFalse(self.m.p._assigned)
         self.assertFalse(np.allclose(before, np.array([3.0])))
         self.assertTrue(np.allclose(after, np.array([3.0])))
         ##self.assertTrue(self.m.get_tensor_dict()[self.m.p._tf_array] == 2.0)
+
+    def testValue(self):
+        """ Make sure initialize certainly works if self.m.p.value is called """
+        # make sure initialize op certainly assigned
+        self.assertTrue(self.m.p._assigned)
+        # call self.m.p.value
+        a = self.m.p.value
+        # make sure assigned flag removed.
+        self.assertFalse(self.m.p._assigned)
+
 
     def testReplacement(self):
         old_p = self.m.p
@@ -102,7 +110,6 @@ class ParamTestsScalar(unittest.TestCase):
         self.m.r.feed(tensor_r)
         self.m.s = val_s
         self.m._session.run(tf.initialize_variables([tensor_q, tensor_r]))
-        self.m.initialize()
         self.assertTrue(np.allclose(val_q, self.m.q.value))
         self.assertTrue(np.allclose(val_r, self.m.r.value))
         self.assertTrue(np.allclose(val_s, self.m.s.value))
@@ -130,7 +137,6 @@ class ParamTestLayered(unittest.TestCase):
         """ make sure Parameterized.feed works """
         val = self.rng.randn(2,3,3)
         self.m.p = val
-        self.m.initialize()
         self.assertTrue(np.allclose(val, self.m.p.value))
 
     def test_feed(self):
@@ -178,11 +184,9 @@ class ParamTestsDeeper(unittest.TestCase):
         self.assertTrue(self.m.foo.bar.baz.name == 'baz')
 
     def testAssign(self):
-        self.m.initialize()
         before = self.m.foo.bar.baz.value
         self.m.foo.bar.baz = 3.0
         self.assertTrue(isinstance(self.m.foo.bar.baz, hb.param.Variable))
-        self.m.initialize()
         after = self.m.foo.bar.baz.value
         self.assertFalse(np.allclose(before, np.array([3.0])))
         self.assertTrue(np.allclose(after, np.array([3.0])))
@@ -227,7 +231,6 @@ class TestParamList(unittest.TestCase):
         m.l = hb.param.ParamList([p1, p2])
 
         m.l[0] = 1.0
-        m.initialize()
         self.assertTrue(np.allclose(p1.value, 1.0))
 
         with self.assertRaises(TypeError):
@@ -252,7 +255,6 @@ class TestParamList(unittest.TestCase):
 
         # test assignment:
         m.l[0].p = 5
-        m.initialize()
         self.assertTrue(np.allclose(p.value, 5.0))
 
         # test to make sure tf_mode get turned on and off
@@ -286,7 +288,6 @@ class InitTest(unittest.TestCase):
         self.m = hb.model.Model()
         self.m.p = hb.param.Variable(shape=[10,20], mean=0.0, stddev=0.1)
         self.m.q = hb.param.Variable(shape=[10,20], mean=0.1, stddev=0.1)
-        self.m.initialize()
 
     def test_init(self):
         self.assertTrue(np.all(self.m.p.value >-0.2))
