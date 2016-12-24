@@ -45,9 +45,10 @@ class Model(Parameterized):
     assignes the value to parameters.
 
     """
-    def __init__(self, name='model'):
+    def __init__(self, name='model', **kw):
         """
         name is a string describing this model.
+        kw: keywords that will be passed to setUp method.
         """
         Parameterized.__init__(self)
         # name of the model
@@ -57,7 +58,7 @@ class Model(Parameterized):
         # Index that will be used for minibatching.
         self._index = Indexer()
         # setUp the model
-        self.setUp()
+        self.setUp(**kw)
 
         # TODO some tricks to avoid recompilation
         #self._needs_recompile = True
