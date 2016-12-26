@@ -7,6 +7,28 @@ from Henbun._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32
 
+class test_gp_numerics(unittest.TestCase):
+    def test(self):
+        """ Make sure SpareseGP works with very small jitter"""
+        self.rng = np.random.RandomState(0)
+        self.m = hb.model.Model()
+        # sparse gp
+        self.m.sparse_gp = hb.gp.SparseGP(z= np.random.randn(600,1),
+            kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
+        # variational posterior
+        self.m.u = hb.variationals.Normal(shape=[600,1])
+        # new coordinate
+        x = tf.constant(self.rng.randn(400,1), dtype=float_type)
+        self.m.initialize()
+        with self.m.tf_mode():
+            # just test works fine
+            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u, 'neglected'))
+            self.assertFalse(np.any(np.isnan(samples))) # test if it is not None
+            # Also test for q_shape=diagonal case
+            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u, 'diagonal'))
+            self.assertFalse(np.any(np.isnan(samples))) # test if it is not None
+
+
 class test_gp(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.RandomState(0)
@@ -15,7 +37,7 @@ class test_gp(unittest.TestCase):
         self.m.gp = hb.gp.GP(
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # sparse gp
-        self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(0,1.0,60).reshape(-1,2),
+        self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(-2.0,2.0,60).reshape(-1,2),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
         self.m.u = hb.variationals.Normal(shape=[30,20])
@@ -59,7 +81,7 @@ class test_gp(unittest.TestCase):
             self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
 
     def test_batch(self):
-        x = tf.constant(self.rng.randn(40,2,20), dtype=float_type)
+        x = tf.constant(self.rng.randn(200,2,20), dtype=float_type)
         self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
@@ -67,7 +89,7 @@ class test_gp(unittest.TestCase):
             # make sure gradients certainly works
             grad = tf.gradients(samples, tf.trainable_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [200,20]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -77,7 +99,7 @@ class test_gp(unittest.TestCase):
                 # just test works fine
                 samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
             # assert shape
-            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [200,20]))
 
 
 class gp(hb.model.Model):

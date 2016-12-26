@@ -129,7 +129,7 @@ class SparseGP(GP):
                 diag_var = jitter + \
                     tf.expand_dims(self.kern.Kdiag(x) - tf.reduce_sum(tf.square(Ln), -1), -1) # [n,1]
                 return samples + \
-                    tf.sqrt(diag_var) * tf.random_normal([tf.shape(x)[0], N],
+                    tf.sqrt(tf.abs(diag_var)) * tf.random_normal([tf.shape(x)[0], N],
                                                 dtype=float_type)
             elif q_shape is 'neglected':
                 return samples
@@ -154,7 +154,7 @@ class SparseGP(GP):
                 diag_var = jitter + \
                     tf.transpose(self.kern.Kdiag(x) - tf.reduce_sum(tf.square(Ln), -1))
                 return samples + \
-                    tf.sqrt(diag_var) * tf.random_normal([tf.shape(x)[0], N], dtype=float_type)
+                    tf.sqrt(tf.abs(diag_var)) * tf.random_normal([tf.shape(x)[0], N], dtype=float_type)
             elif q_shape is 'neglected':
                 return samples
             else: # fullrank case
