@@ -94,29 +94,6 @@ class Model(Parameterized):
         self._session.run(self.initialize_ops)
         self.finalize()
 
-    def save(self, save_path = None, global_step = None):
-        """
-        Returns: path of the saved-file.
-        """
-        if save_path is None:
-            save_path = self.name + '.ckpt'
-        #
-        assert self._saver is not None
-        # do initialization for the case variables are not initialized.
-        self.initialize()
-        # save
-        return self._saver.save(self._session, save_path, global_step)
-
-    def restore(self, save_path=None):
-        """
-        Restore the parameter from file.
-        """
-        if save_path is None:
-            save_path = self.name + '.ckpt'
-        self._saver.restore(self._session, save_path)
-        # raise down the initialized flag
-        [v.finalize() for v in self.get_variables()]
-
     def run(self, tensor, feed_dict=None):
         """
         Shortcut for self._session.run(operation)

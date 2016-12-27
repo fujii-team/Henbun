@@ -33,6 +33,7 @@ class SquareModel2(hb.model.Model):
     def setUp(self):
         self.p = hb.param.Variable([2,3], collections = ['global1', 'global2'])
         self.q = hb.param.Variable([2,3], collections = ['global2'])
+        self.v = hb.variationals.Gaussian([2,3], collections = ['global2'])
 
     @hb.model.AutoOptimize()
     def likelihood(self):
@@ -90,6 +91,29 @@ class test_model2(unittest.TestCase):
             os.remove(self.filename+str('.meta'))
         if os.path.exists('checkpoint'):
             os.remove('checkpoint')
+
+    def test_parameterized(self):
+        """ make sure save method for parameterized works fine """
+        self.m.v.q_mu = np.ones((2*3))
+        self.m.v.save(self.filename)
+        # make sure the file is generated
+        self.assertTrue(os.path.exists(self.filename))
+        # make sure the model.restore()
+        self.m2 = SquareModel2()
+        self.m2.v.restore(self.filename)
+        self.assertTrue(np.allclose(self.m2.v.q_mu.value, np.ones((2*3))))
+        self.assertFalse(np.allclose(self.m2.p.value, np.ones((2,3))))
+        # make sure initialize() does not change the value
+        self.m2.initialize()
+        self.assertTrue(np.allclose(self.m2.v.q_mu.value, np.ones((2*3))))
+        # remove the generated files
+        if os.path.exists(self.filename):
+            os.remove(self.filename)
+        if os.path.exists(self.filename+str('.meta')):
+            os.remove(self.filename+str('.meta'))
+        if os.path.exists('checkpoint'):
+            os.remove('checkpoint')
+
 
 class MinibatchModel(hb.model.Model):
     def setUp(self):
