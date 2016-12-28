@@ -42,8 +42,8 @@ class UnitStationary(Kern):
         Kern.__init__(self)
         if isinstance(lengthscales, np.ndarray):
             self.lengthscales = Variable(lengthscales.shape,
-                                    n_batch=n_batch,
                                     transform=transforms.positive, collections=collections)
+            # set initial values
             self.lengthscales = lengthscales
         elif isinstance(lengthscales, (Variable, Variational)):
             self.lengthscales = lengthscales
@@ -66,30 +66,27 @@ class UnitStationary(Kern):
         If X is 3-dimensional,
         each dimension is considered as [n,d,N] (and [n2,d,N] for X2)
          - N: batch number.
-        Returns: [n,n2,N] sized kernel value.
+        Returns: [N,n,n2] sized kernel value.
         """
         # match lengthscales in batched case
         def fn1(): return self.lengthscales
         def fn2(): return tf.expand_dims(self.lengthscales, -1)
         l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
 
-        Xscaled = X/l
-        Xs = tf.reduce_sum(tf.square(Xscaled), 1) # [n] or [n,N]
-        Xt = tf.transpose(Xscaled) # [N,d,n] or [d,n]
+        Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
+        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,N]
         if X2 is None:
-            # batched case : [N,n,d]@[N,d,n]->[N,n,n]->[n,n,N]
+            # batched case : [N,n,d]@[N,d,n]->[N,n,n]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.transpose(tf.batch_matmul(Xt, Xt, adj_x=True)) + \
-                        tf.expand_dims(Xs, 1) + tf.expand_dims(Xs, 0)
+            return -2*tf.batch_matmul(Xt, Xt, adj_x=True) + \
+                        tf.expand_dims(Xs, -1) + tf.expand_dims(Xs, -2)
         else:
-            X2scaled = X2/l
-            X2s = tf.reduce_sum(tf.square(X2scaled), 1)
-            X2t = tf.transpose(X2scaled) # [N,d,n2] or [d,n2]
-            # batched case : [N,n2,d]@[N,d,n]->[N,n2,n]->[n,n2,N]
+            X2t = tf.transpose(X2/l)
+            X2s = tf.reduce_sum(tf.square(X2t), -2)
+            # batched case : [N,n,d]@[N,d,n2]->[N,n,n2]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.transpose(tf.batch_matmul(X2t, Xt, adj_x=True)) + \
-                        tf.expand_dims(Xs, 1) + tf.expand_dims(X2s, 0)
-
+            return -2*tf.batch_matmul(Xt, X2t, adj_x=True) + \
+                        tf.expand_dims(Xs, -1) + tf.expand_dims(X2s, -2)
 
     def euclid_dist(self, X, X2):
         r2 = self.square_dist(X, X2)
@@ -100,7 +97,7 @@ class UnitStationary(Kern):
         # for non-batch X
         def fn1(): return tf.ones([tf.shape(X)[0]], dtype=float_type)
         # for batch X
-        def fn2(): return tf.ones([tf.shape(X)[0],tf.shape(X)[-1]], dtype=float_type)
+        def fn2(): return tf.ones([tf.shape(X)[-1], tf.shape(X)[0]], dtype=float_type)
         return tf.cond(tf.equal(tf.rank(X), 2),fn1,fn2)
 
     def Cholesky(self, X):
@@ -113,18 +110,42 @@ class UnitStationary(Kern):
         jitter = settings.numerics.jitter_level
         # callable to absorb the X-rank difference
         # for non-batch X
-        def fn1(): return tf.cholesky(self.K(X)+eye(tf.shape(X)[0])*jitter)
+        def jitter1(): return eye(tf.shape(X)[0])*jitter
         # for batch X.
-        # This is wrong for non-batch case, but can be executed without error.
-        perm = tf.concat(concat_dim=0, values=[tf.range(1,tf.rank(X)), [0]]) # [1,2,0] or [1,0]
-        def fn2(): return tf.transpose(tf.cholesky(
-                        tf.transpose(self.K(X)) +\
-                        eye(tf.shape(X)[0])* jitter), perm) # [1,2,0] or [0,1]
-        return tf.cond(tf.equal(tf.rank(X), 2), fn1, fn2)
+        def jitter2(): return tf.expand_dims(eye(tf.shape(X)[0]),0)* jitter
+        jitter = tf.cond(tf.equal(tf.rank(X), 2), jitter1, jitter2)
+        return tf.cholesky(self.K(X)+jitter)
 
 class UnitRBF(UnitStationary):
     """
     The radial basis function (RBF) or squared exponential kernel
+                     (x-x2)^2
+    K(x,x2) = exp(- ----------)
+                     2 * l^2
     """
     def K(self, X, X2=None):
         return tf.exp(-self.square_dist(X, X2)/2)
+
+class UnitCsymRBF(UnitStationary):
+    """
+    The squared exponential kernel in cylindrically symmetric space.
+                     (x-x2)^2            (x+x2)^2
+    K(x,x2) = exp(- ----------) + exp(- ----------)
+                     2 * l^2             2 * l^2
+    The second term indicates the correlation between the opsite
+    side of the point against the axis x=0.
+    """
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+        return tf.exp(-self.square_dist(X,  X2)/2)\
+             + tf.exp(-self.square_dist(X, -X2)/2)
+
+    def Kdiag(self, X):
+        # match lengthscales in batched case
+        def fn1(): return self.lengthscales
+        def fn2(): return tf.expand_dims(self.lengthscales, -1)
+        l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
+        Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
+        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,n]
+        return tf.ones_like(Xs, dtype=float_type) + tf.exp(-2*Xs)
