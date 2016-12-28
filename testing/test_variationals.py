@@ -130,6 +130,13 @@ class test_variational(unittest.TestCase):
             print(KL, KL_ana)
             self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
+    def test_feed(self):
+        """ Make sure feed method does nothing for Global case"""
+        for shape in self.shapes:
+            tensor_ref = self.m[shape].m._tensor
+            self.m[shape].m.feed(np.ones(10))
+            self.assertTrue(tensor_ref is self.m[shape].m._tensor)
+
 class test_variational_local(unittest.TestCase):
     def setUp(self):
         tf.set_random_seed(0)
@@ -307,7 +314,7 @@ def gaussian_KL(mu, L, q_shape='diagonal'):
     arg:
     - mu: mean vector. np.array sized [N,n]
     - L : cholesky matrix. np.array sized [N,n,n],
-    """
+    """i
     KL = 0.0
     for i in range(mu.shape[0]):
         n = mu.shape[1]
