@@ -314,7 +314,7 @@ def gaussian_KL(mu, L, q_shape='diagonal'):
     arg:
     - mu: mean vector. np.array sized [N,n]
     - L : cholesky matrix. np.array sized [N,n,n],
-    """i
+    """
     KL = 0.0
     for i in range(mu.shape[0]):
         n = mu.shape[1]
