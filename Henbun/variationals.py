@@ -118,11 +118,12 @@ class Variational(Parameterized):
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
         Parameterized.feed(self, x)
-        # samples from i.i.d
-        sample_shape = self.n_layers + [self.size, tf.shape(x)[-1]]
-        self.u = tf.random_normal(sample_shape, dtype=float_type)
-        self._tensor = self._sample(self.u)
-        self.transformed_tensor = self.transform.tf_forward(self._tensor)
+        if self.collections is graph_key.LOCAL:
+            # samples from i.i.d
+            sample_shape = self.n_layers + [self.size, tf.shape(x)[-1]]
+            self.u = tf.random_normal(sample_shape, dtype=float_type)
+            self._tensor = self._sample(self.u)
+            self.transformed_tensor = self.transform.tf_forward(self._tensor)
 
     def _sample(self, u):
         """

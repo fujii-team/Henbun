@@ -130,6 +130,13 @@ class test_variational(unittest.TestCase):
             print(KL, KL_ana)
             self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
+    def test_feed(self):
+        """ Make sure feed method does nothing for Global case"""
+        for shape in self.shapes:
+            tensor_ref = self.m[shape].m._tensor
+            self.m[shape].m.feed(np.ones(10))
+            self.assertTrue(tensor_ref is self.m[shape].m._tensor)
+
 class test_variational_local(unittest.TestCase):
     def setUp(self):
         tf.set_random_seed(0)
