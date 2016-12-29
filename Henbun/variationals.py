@@ -54,6 +54,9 @@ class Variational(Parameterized):
                 None is given. If a certain value is specified, then Local and
                 Global variables behave same.
 
+        The shape of this variables will be [*n_layers, *n_batches, *shape],
+        as param.Variable
+
         - mean: initial mean of the variational parameters.
 
         - stddev: initial stddev of the variational parameters
@@ -99,7 +102,7 @@ class Variational(Parameterized):
             if self.n_batch is None:
                 sample_shape = list(self.n_layers) + [self.size]
             else:
-                sample_shape = list(self.n_layers) + [self.size] + [self.n_batch]
+                sample_shape = list(self.n_layers) + [self.n_batch] + [self.size]
             # sample from i.i.d.
             self.u = tf.random_normal(sample_shape, dtype=float_type)
             with self.tf_mode():
@@ -111,16 +114,16 @@ class Variational(Parameterized):
         In tf_mode, this class is seen as a sample from the variational distribution.
         """
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return  clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape))
+            return clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape))
         else:
-            return clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape + [-1]))
+            return clip(tf.reshape(self.transformed_tensor, self.n_layers + [-1] + self._shape))
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
         Parameterized.feed(self, x)
         if self.collections is graph_key.LOCAL:
             # samples from i.i.d
-            sample_shape = self.n_layers + [self.size, tf.shape(x)[-1]]
+            sample_shape = self.n_layers + [tf.shape(x)[-2], self.size]
             self.u = tf.random_normal(sample_shape, dtype=float_type)
             self._tensor = self._sample(self.u)
             self.transformed_tensor = self.transform.tf_forward(self._tensor)
@@ -135,18 +138,7 @@ class Variational(Parameterized):
         if self.q_shape is 'diagonal':
             return self.q_mu + tf.exp(self.q_sqrt) * u
         else:
-            # self.q_sqrt : [*R,n,n]
-            # self.q_mu   : [*R,n] -> [*R,n,1]
-            if self.collections is not graph_key.LOCAL and self.n_batch is None:
-                sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
-            else:
-                # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
-                trans_sqrt = list(range(len(self.n_layers)+3))
-                trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
-                # self.q_sqrt : [*R,n,n,N] -> [*R,N,n,n]
-                sqrt = tf.transpose(
-                    tf.matrix_band_part(
-                    tf.transpose(self.q_sqrt, trans_sqrt), 0,-1), trans_sqrt)
+            sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
             return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
 
     def _einsum_matmul(self):
@@ -158,36 +150,19 @@ class Variational(Parameterized):
         alphabet = 'abcdefghijklmnopqrstuvwxyz'
         n = len(self.n_layers)
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            # '...ijk,...ik->...,ij'
-            index1 = alphabet[:n+2]
-            index2 = alphabet[:n]+alphabet[n+1]
-            index3 = alphabet[:n+1]
+            # layer:'..i', shape:'jk'
+            # '...ijk,...ik->...ij'
+            index1 = alphabet[:n+2] # '...ijk'
+            index2 = alphabet[:n]+alphabet[n+1] # '...ik'
+            index3 = alphabet[:n+1] # '...ij'
             return index1+','+index2+'->'+index3
         else:
-            # '...ijkl,...ikl->...,ijl'
-            index1 = alphabet[:n+3]
-            index2 = alphabet[:n]+alphabet[n+1:n+3]
-            index3 = alphabet[:n+1]+alphabet[n+2]
+            # layer:'..i', batch:'j', shape:'kl'
+            # '...ijkl,...ijl->...,ijk'
+            index1 = alphabet[:n+3] # '...ijkl'
+            index2 = alphabet[:n+1]+alphabet[n+2] # '...ijl'
+            index3 = alphabet[:n+2] # '...ijk'
             return index1+','+index2+'->'+index3
-
-    def _einsum_diag(self):
-        """
-        A simple method to generate einsum index for matrix_diag_part.
-        This method is called in logdet() method with 'fullrank' variational
-        parameters.
-        """
-        alphabet = 'abcdefghijklmnopqrstuvwxyz'
-        n = len(self.n_layers)
-        if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            # '...ijk,...ik->...,ij'
-            index1 = alphabet[:n+1] + alphabet[n]
-            index2 = alphabet[:n+1]
-            return index1+'->'+index2
-        else:
-            # '...ijkl,...ikl->...,ijl'
-            index1 = alphabet[:n+1] + alphabet[n] + alphabet[n+1]
-            index2 = alphabet[:n+1] + alphabet[n+1]
-            return index1+'->'+index2
 
     @property
     def logdet(self):
@@ -197,19 +172,7 @@ class Variational(Parameterized):
         if self.q_shape is 'diagonal':
             return 2.0*self.q_sqrt # size [*shape]
         else:
-            if self.collections is not graph_key.LOCAL and self.n_batch is None:
-                return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
-            else:
-                # trans_sqrt : [1,2,...,N-3,N-2,N-1] -> [1,2,...,N-1,N-2,N-3]
-                trans_sqrt = list(range(len(self.n_layers)+3))
-                trans_sqrt[-1], trans_sqrt[-3] = trans_sqrt[-3], trans_sqrt[-1]
-                logdet_tmp = tf.log(tf.square(tf.matrix_diag_part(
-                                        tf.transpose(self.q_sqrt, trans_sqrt))))
-                trans_sqrt = list(range(len(self.n_layers)+2))
-                trans_sqrt[-1], trans_sqrt[-2] = trans_sqrt[-2], trans_sqrt[-1]
-                return tf.transpose(logdet_tmp, trans_sqrt)
-            # TODO Due to tensorflow issue, einsum does not allow diag
-            # return tf.log(tf.square(tf.einsum(self._einsum_diag(), self.q_sqrt)))
+            return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
 
     def KL(self, collection=None):
         """

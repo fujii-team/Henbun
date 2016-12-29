@@ -20,19 +20,8 @@ class test_einsum(unittest.TestCase):
         #         layer:ab+shape:cd
         einsum_global_ref = 'abcd,abd->abc'
         self.assertTrue(v_global._einsum_matmul() == einsum_global_ref)
-        einsum_local_ref = 'abcde,abde->abce'
+        einsum_local_ref = 'abcde,abce->abcd'
         self.assertTrue(v_local._einsum_matmul() == einsum_local_ref)
-
-    def test_diag(self):
-        v_global = hb.variationals.Normal((2,3),
-            n_layers=[2,3], q_shape='fullrank')
-        v_local = hb.variationals.Normal((2,3),
-            n_layers=[2,3], q_shape='fullrank',collections=hb.param.graph_key.LOCAL)
-        #         layer:ab+shape:cd
-        einsum_global_ref = 'abcc->abc'
-        self.assertTrue(v_global._einsum_diag() == einsum_global_ref)
-        einsum_local_ref = 'abccd->abcd'
-        self.assertTrue(v_local._einsum_diag() == einsum_local_ref)
 
 class test_variational(unittest.TestCase):
     """
@@ -142,14 +131,15 @@ class test_variational_local(unittest.TestCase):
         tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
-        self.sqrts  = {'fullrank':self.rng.randn(3,10,10,2).astype(dtype=np_float_type),
-                       'diagonal':self.rng.randn(3,10,2).astype(dtype=np_float_type)}
+        # n_layers=[3], n_batch=2, shape=[10,10] or [10]
+        self.sqrts  = {'fullrank':self.rng.randn(3,2,10,10).astype(dtype=np_float_type),
+                       'diagonal':self.rng.randn(3,2,10).astype(dtype=np_float_type)}
         for i in range(3): # remove upper triangular part
             for j in range(10):
-                self.sqrts['fullrank'][i,j,j,:] = np.exp(0.1*self.sqrts['fullrank'][i,j,j,:])
+                self.sqrts['fullrank'][i,:,j,j] = np.exp(0.1*self.sqrts['fullrank'][i,:,j,j])
                 for k in range(j+1,10):
-                    self.sqrts['fullrank'][i,j,k,:] = 0.
-        self.x = self.rng.randn(3,10,2).astype(np_float_type)
+                    self.sqrts['fullrank'][i,:,j,k] = 0.
+        self.x = self.rng.randn(3,2,10).astype(np_float_type)
         self.m = {}
         for shape in self.shapes:
             self.m[shape] = hb.model.Model()
@@ -158,7 +148,7 @@ class test_variational_local(unittest.TestCase):
                 n_layers=[3], q_shape=shape, collections=hb.param.graph_key.LOCAL)
             if shape is 'fullrank':
                 self.m[shape].m.q_mu.feed(self.x)
-                self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,100,2))
+                self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,2,100))
             else:
                 self.m[shape].m.q_mu.feed(self.x)
                 self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
@@ -169,7 +159,7 @@ class test_variational_local(unittest.TestCase):
             self.m[shape].q.q_sqrt = self.sqrts[shape]
             self.m[shape].initialize()
         # immitate _draw_samples
-        self.samples_iid = self.rng.randn(3,10,2).astype(np_float_type)
+        self.samples_iid = self.rng.randn(3,2,10).astype(np_float_type)
 
     def test_get_variables(self):
         """ Test get_variables certainly works even if in tf_mode """
@@ -178,7 +168,7 @@ class test_variational_local(unittest.TestCase):
                 variables = self.m[shape].get_variables(hb.param.graph_key.LOCAL)
                 feed_size = self.m[shape].feed_size
                 # test feed certainly works
-                self.m[shape].feed(self.rng.randn(3, feed_size, 100).astype(np_float_type))
+                self.m[shape].feed(self.rng.randn(3, 100, feed_size).astype(np_float_type))
             # check feed_size is the same in tf_mode
             self.assertTrue(feed_size == self.m[shape].feed_size)
             self.assertTrue(self.m[shape].m.q_mu in variables)
@@ -188,11 +178,11 @@ class test_variational_local(unittest.TestCase):
 
     def test_logdet(self):
         # true solution
-        logdets = {'fullrank':np.zeros((3,10,2)), 'diagonal': np.zeros((3,10,2))}
+        logdets = {'fullrank':np.zeros((3,2,10)), 'diagonal': np.zeros((3,2,10))}
         for i in range(3):
-            for j in range(10):
-                for k in range(2):
-                    logdets['fullrank'][i,j,k] = 2.0*np.log(self.sqrts['fullrank'][i,j,j,k])
+            for j in range(2):
+                for k in range(10):
+                    logdets['fullrank'][i,j,k] = 2.0*np.log(self.sqrts['fullrank'][i,j,k,k])
                     logdets['diagonal'][i,j,k] = 2.0*self.sqrts['diagonal'][i,j,k]
         # check
         for shape in self.shapes:
@@ -208,10 +198,10 @@ class test_variational_local(unittest.TestCase):
             with self.m[shape].tf_mode():
                 if shape is 'diagonal':
                     self.m[shape].m =\
-                            np.concatenate([self.x, self.sqrts[shape].reshape(3,10,2)], axis=1)
+                            np.concatenate([self.x, self.sqrts[shape].reshape(3,2,10)], axis=2)
                 else:
                     self.m[shape].m =\
-                            np.concatenate([self.x, self.sqrts[shape].reshape(3,100,2)], axis=1)
+                            np.concatenate([self.x, self.sqrts[shape].reshape(3,2,100)], axis=2)
                 # make sure Variational is seen as tf.Tensor in tf_mode
                 self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
             # make sure Variational is seen as Variational in non-tf_mode
@@ -222,7 +212,7 @@ class VariationalModel(hb.model.Model):
         tf.set_random_seed(0)
         self.q_global = hb.variationals.Normal(shape=[3])
         self.q_local = hb.variationals.Normal(shape=[3], collections=hb.param.graph_key.LOCAL)
-        self.x = hb.param.Variable(shape=[6,10])
+        self.x = hb.param.Variable(shape=[10,6])
     @hb.model.AutoOptimize()
     def likelihood_global(self):
         self.q_local = self.x
