@@ -8,7 +8,7 @@ float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
 class MatBias(Parameterized):
-    def __init__(self, nodes, n_layers=[1],
+    def __init__(self, nodes, n_layers=[],
                     mean=0.0, stddev=1.0,
                     variable = tf.Variable,
                     collections = [graph_key.VARIABLES]):
@@ -21,15 +21,15 @@ class MatBias(Parameterized):
         assert(len(nodes)==2)
         Parameterized.__init__(self)
         # --- define matrices and biases ---
-        self.w = variable(shape=[nodes[1], nodes[0]], n_layers=n_layers,
+        self.w = variable(shape=[nodes[0], nodes[1]], n_layers=n_layers,
                             mean=mean, stddev=stddev,
                             collections=collections)
-        self.b = variable(shape=[nodes[1], 1], n_layers=n_layers,
+        self.b = variable(shape=[1,nodes[1]], n_layers=n_layers,
                             mean=mean, stddev=stddev,
                             collections=collections)
 
     def __call__(self, x):
-        return clip(tf.batch_matmul(self.w, x) + self.b)
+        return clip(tf.batch_matmul(x, self.w) + self.b)
 
 class NeuralNet(Parameterized):
     def __init__(self, nodes, n_layers = [],
