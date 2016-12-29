@@ -28,7 +28,7 @@ setup(name='Henbun',
       ext_modules=[],
       packages=["Henbun"],
       package_dir={'Henbun': 'Henbun'},
-      py_modules=['Henbun.__init__'],
+      py_modules=['Henbun.__init__', 'Henbun.gp.__init__'],
       test_suite='testing',
       #install_requires=['numpy>=1.9', 'scipy>=0.16', 'tensorflow>=0.9', 'GPflow>=0.3.0'],
       install_requires='''
