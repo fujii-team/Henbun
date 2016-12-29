@@ -176,6 +176,8 @@ class Variable(Parentable):
             However, it will maintain the compatibility between global and local
             parameters.
 
+        The shape of this variables will be [*n_layers, *n_batches, *shape].
+
         - transform: one of transforms.
             For example we can constrain the variable in positive space,
             >>> transform = transforms.positive
@@ -200,7 +202,7 @@ class Variable(Parentable):
             if self.n_batch is None:
                 _shape = list(n_layers) + list(shape)
             else:
-                _shape = list(n_layers) + list(shape) + [self.n_batch]
+                _shape = list(n_layers) + [self.n_batch] + list(shape)
             self._tensor = tf.Variable(
                 tf.truncated_normal(_shape, dtype=float_type, mean=mean, stddev=stddev),
                                             dtype=float_type, collections=collections)
@@ -296,10 +298,9 @@ class Variable(Parentable):
             # check if the shape is the same
             if hasattr(x, "get_shape"):
                 shape = x.get_shape()
-                if self.n_batch is not None and shape[-1] is not None:
-                    assert(shape[-1]==self.n_batch)
-            shape2 = self.n_layers + self.shape + [tf.shape(x)[-1],]
-            # --- clip value ---
+                if self.n_batch is not None and shape[-2] is not None:
+                    assert(shape[-2]==self.n_batch)
+            shape2 = self.n_layers + [tf.shape(x)[-2],] + self.shape
             self._tensor = tf.reshape(x, shape2)
 
     def get_feed_dict(self, minibatch_index):
@@ -528,10 +529,11 @@ class Parameterized(Parentable):
         begin = np.zeros(len(n_layers) + 2)
         size = -np.ones(len(n_layers) + 2)
         for p in self.sorted_variables:
-            size[-2] = p.feed_size
+            # feed size should be in the last dimensions.
+            size[-1] = p.feed_size
             p.feed(tf.slice(x, tf.convert_to_tensor(begin, dtype=tf.int32),
                                tf.convert_to_tensor(size,  dtype=tf.int32)))
-            begin[-2] += p.feed_size
+            begin[-1] += p.feed_size
 
     def get_feed_dict(self, minibatch_index=None):
         """
@@ -659,10 +661,11 @@ class Data(Variable):
 class MinibatchData(Variable):
     """
     Class for feeding minibatch-data into Graph.
+    The minibatch index should be in the first axis.
     """
     def __init__(self, data, n_batch=None):
         # call initializer
-        Variable.__init__(self, data.shape[:-1], n_layers=[], n_batch=n_batch,
+        Variable.__init__(self, data.shape[0:], n_layers=[], n_batch=n_batch,
                                                 collections=graph_key.DATA)
         shape = list(self.n_layers) + list(self.shape) + [n_batch]
         self._tensor = tf.placeholder(shape=shape, dtype=float_type)
@@ -670,7 +673,7 @@ class MinibatchData(Variable):
 
     @property
     def data_size(self):
-        return self.data.shape[-1]
+        return self.data.shape[0]
 
     def get_feed_dict(self, minibatch_index):
         """
@@ -678,4 +681,4 @@ class MinibatchData(Variable):
         """
         if minibatch_index is None:
             return {}
-        return {self._tensor: self.data[...,minibatch_index]}
+        return {self._tensor: self.data[minibatch_index]}

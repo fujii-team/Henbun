@@ -101,27 +101,27 @@ class ParamTestsScalar(unittest.TestCase):
 
     def test_feed_variable(self):
         """ make sure Variable.feed works """
-        val_q = np.ones((3,10))
+        val_q = np.ones((10,3))
         tensor_q = tf.Variable(val_q, dtype=float_type)
-        val_r = np.ones((5,4,10))
+        val_r = np.ones((10,5*4))
         tensor_r = tf.Variable(val_r, dtype=float_type)
-        val_s = np.ones((5,4,2))
+        val_s = np.ones((2,5,4))
         self.m.q.feed(tensor_q)
         self.m.r.feed(tensor_r)
         self.m.s = val_s
         self.m._session.run(tf.initialize_variables([tensor_q, tensor_r]))
         self.assertTrue(np.allclose(val_q, self.m.q.value))
-        self.assertTrue(np.allclose(val_r, self.m.r.value))
+        self.assertTrue(np.allclose(val_r.flatten(), self.m.r.value.flatten()))
         self.assertTrue(np.allclose(val_s, self.m.s.value))
 
     def test_feed_parameterized(self):
         """ make sure Parameterized.feed works """
-        val = self.rng.randn(self.m.feed_size,10)
+        val = self.rng.randn(10, self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
         self.m._session.run(tf.initialize_variables([tensor]))
-        self.assertTrue(np.allclose(val[:3,:], self.m.q.value))
-        self.assertTrue(np.allclose(val[3:,:].flatten(), self.m.r.value.flatten()))
+        self.assertTrue(np.allclose(val[:,:3], self.m.q.value))
+        self.assertTrue(np.allclose(val[:,3:].flatten(), self.m.r.value.flatten()))
 
 class ParamTestLayered(unittest.TestCase):
     """ test Layered LocalVariable """
@@ -141,12 +141,12 @@ class ParamTestLayered(unittest.TestCase):
 
     def test_feed(self):
         """ make sure Parameterized.feed works """
-        val = self.rng.randn(2,3,self.m.feed_size,10)
+        val = self.rng.randn(2,3,10,self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
         self.m._session.run(tf.initialize_variables([tensor]))
-        self.assertTrue(np.allclose(val[:,:,:3,:].flatten(), self.m.q.value.flatten()))
-        self.assertTrue(np.allclose(val[:,:,3:,:].flatten(), self.m.r.value.flatten()))
+        self.assertTrue(np.allclose(val[:,:,:,:3].flatten(), self.m.q.value.flatten()))
+        self.assertTrue(np.allclose(val[:,:,:,3:].flatten(), self.m.r.value.flatten()))
 
 
 class ParamTestsDeeper(unittest.TestCase):
@@ -194,12 +194,12 @@ class ParamTestsDeeper(unittest.TestCase):
 
     def test_feed_parameterized(self):
         """ make sure Parameterized.feed works """
-        val = self.rng.randn(self.m.feed_size,10)
+        val = self.rng.randn(10, self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
         self.m._session.run(tf.initialize_variables([tensor]))
-        self.assertTrue(np.allclose(val[:3,:].flatten(), self.m.foo.bar.q.value.flatten()))
-        self.assertTrue(np.allclose(val[3:,:].flatten(), self.m.foo.bar.r.value.flatten()))
+        self.assertTrue(np.allclose(val[:,:3].flatten(), self.m.foo.bar.q.value.flatten()))
+        self.assertTrue(np.allclose(val[:,3:].flatten(), self.m.foo.bar.r.value.flatten()))
 
 
 class TestParamList(unittest.TestCase):
@@ -305,7 +305,7 @@ class DataTest(unittest.TestCase):
         self.m.foo.bar.baz = hb.param.Variable(1)
         self.data = self.rng.randn(3,2)
         self.m.foo.bar.d1 = hb.param.Data(self.data)
-        self.minibatch_data = self.rng.randn(3,2,10)
+        self.minibatch_data = self.rng.randn(10,3,2)
         self.m.foo.bar.d2 = hb.param.MinibatchData(self.minibatch_data)
 
     def test_get_feed_dict(self):
@@ -314,7 +314,7 @@ class DataTest(unittest.TestCase):
         self.assertTrue(np.allclose(feed_dict[self.m.foo.bar.d1._tensor],
                                             self.m.foo.bar.d1.data))
         self.assertTrue(np.allclose(feed_dict[self.m.foo.bar.d2._tensor],
-                                            self.m.foo.bar.d2.data[...,index]))
+                                            self.m.foo.bar.d2.data[index]))
 '''
 class TestPickleAndDict(unittest.TestCase):
     def setUp(self):
