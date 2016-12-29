@@ -56,7 +56,7 @@ class UnitStationary(Kern):
         Returns the square distance between X and X2.
         X, X2 is 2d- or 3d-tensor.
 
-        If X is (and X2 should be the same dim.) 2dimensional,
+        If X is (and X2 should have the same dimension) 2dimensional,
         each dimension is considered as [n,d] and [n2,d]
          - n: number of data point
          - d: dimension of each data
@@ -64,28 +64,23 @@ class UnitStationary(Kern):
         If X2 is None, then X2 = X is assumed.
 
         If X is 3-dimensional,
-        each dimension is considered as [n,d,N] (and [n2,d,N] for X2)
+        each dimension is considered as [N,n,d] (and [N,n2,d] for X2)
          - N: batch number.
         Returns: [N,n,n2] sized kernel value.
         """
-        # match lengthscales in batched case
-        def fn1(): return self.lengthscales
-        def fn2(): return tf.expand_dims(self.lengthscales, -1)
-        l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
-
-        Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
-        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,N]
+        X = X/self.lengthscales # [n,d]  or [N,n,d]
+        Xs = tf.reduce_sum(tf.square(X), -1) # [n] or [N,n]
         if X2 is None:
             # batched case : [N,n,d]@[N,d,n]->[N,n,n]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(Xt, Xt, adj_x=True) + \
+            return -2*tf.batch_matmul(X, X, adj_y=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(Xs, -2)
         else:
-            X2t = tf.transpose(X2/l)
-            X2s = tf.reduce_sum(tf.square(X2t), -2)
+            X2 = X2/self.lengthscales
+            X2s = tf.reduce_sum(tf.square(X2), -1)
             # batched case : [N,n,d]@[N,d,n2]->[N,n,n2]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(Xt, X2t, adj_x=True) + \
+            return -2*tf.batch_matmul(X, X2, adj_y=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(X2s, -2)
 
     def euclid_dist(self, X, X2):
@@ -93,12 +88,7 @@ class UnitStationary(Kern):
         return tf.sqrt(r2 + 1e-12)
 
     def Kdiag(self, X):
-        # callable to absorb the X-rank difference
-        # for non-batch X
-        def fn1(): return tf.ones([tf.shape(X)[0]], dtype=float_type)
-        # for batch X
-        def fn2(): return tf.ones([tf.shape(X)[-1], tf.shape(X)[0]], dtype=float_type)
-        return tf.cond(tf.equal(tf.rank(X), 2),fn1,fn2)
+        return tf.ones(tf.shape(X)[:-1], dtype=float_type)
 
     def Cholesky(self, X):
         """
@@ -112,7 +102,7 @@ class UnitStationary(Kern):
         # for non-batch X
         def jitter1(): return eye(tf.shape(X)[0])*jitter
         # for batch X.
-        def jitter2(): return tf.expand_dims(eye(tf.shape(X)[0]),0)* jitter
+        def jitter2(): return tf.expand_dims(eye(tf.shape(X)[1]),0)* jitter
         jitter = tf.cond(tf.equal(tf.rank(X), 2), jitter1, jitter2)
         return tf.cholesky(self.K(X)+jitter)
 
@@ -142,10 +132,6 @@ class UnitCsymRBF(UnitStationary):
              + tf.exp(-self.square_dist(X, -X2)/2)
 
     def Kdiag(self, X):
-        # match lengthscales in batched case
-        def fn1(): return self.lengthscales
-        def fn2(): return tf.expand_dims(self.lengthscales, -1)
-        l = tf.cond(tf.equal(tf.rank(X),2), fn1, fn2)
-        Xt = tf.transpose(X/l) # [d,n]  or [N,d,n]
-        Xs = tf.reduce_sum(tf.square(Xt), -2) # [n] or [N,n]
+        X = X/self.lengthscales # [n,d]  or [N,n,d]
+        Xs = tf.reduce_sum(tf.square(X), -1) # [n] or [N,n]
         return tf.ones_like(Xs, dtype=float_type) + tf.exp(-2*Xs)

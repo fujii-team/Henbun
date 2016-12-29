@@ -126,6 +126,7 @@ class Model(Parameterized):
                     If this model do not have MinibatchData, feed_dict=None
                     can be used to feed all the data.
         """
+        self.initialize()
         if feed_dict is None:
             feed_dict = self.get_feed_dict()
         return self._session.run(tensor, feed_dict=feed_dict)

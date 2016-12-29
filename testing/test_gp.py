@@ -16,10 +16,10 @@ class test_gp_numerics(unittest.TestCase):
         self.m.sparse_gp = hb.gp.SparseGP(z= np.random.randn(600,1),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
-        self.m.u = hb.variationals.Normal(shape=[600,1])
+        self.m.u = hb.variationals.Normal(shape=[1,600])
         # new coordinate
         x = tf.constant(self.rng.randn(400,1), dtype=float_type)
-        self.m.initialize()
+        #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
             samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u, 'neglected'))
@@ -40,11 +40,11 @@ class test_gp(unittest.TestCase):
         self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(-2.0,2.0,60).reshape(-1,2),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
-        self.m.u = hb.variationals.Normal(shape=[30,20])
+        self.m.u = hb.variationals.Normal(shape=[20,30])
 
     def test_dense(self):
         x = tf.constant(self.rng.randn(30,2), dtype=float_type)
-        self.m.initialize()
+        #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
             samples = self.m.gp.samples(x, self.m.u)
@@ -59,7 +59,7 @@ class test_gp(unittest.TestCase):
 
     def test_non_batch_sparse(self):
         x = tf.constant(self.rng.randn(40,2), dtype=float_type)
-        self.m.initialize()
+        #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
             samples = self.m.sparse_gp.samples(x, self.m.u)
@@ -81,8 +81,8 @@ class test_gp(unittest.TestCase):
             self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
 
     def test_batch(self):
-        x = tf.constant(self.rng.randn(200,2,20), dtype=float_type)
-        self.m.initialize()
+        x = tf.constant(self.rng.randn(200,20,2), dtype=float_type)
+        #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
             samples = self.m.sparse_gp.samples(x, self.m.u)
@@ -112,7 +112,7 @@ class gp(hb.model.Model):
         self.kern = hb.gp.kernels.UnitRBF() # kernel with unit variance
         self.k_var = hb.param.Variable(1, transform=hb.transforms.positive) # kernel variance
         # --- variational parameter ---
-        self.q = hb.variationals.Normal(shape=[20,1], q_shape='fullrank')
+        self.q = hb.variationals.Normal(shape=[1,20], q_shape='fullrank')
         # --- likelihood variance ---
         self.var = hb.param.Variable(1, transform=hb.transforms.positive)
 

@@ -13,24 +13,22 @@ class RefStationary(object):
 
     def square_dist(self, X, X2):
         if len(X.shape)==3: # batched case
-            dist = np.zeros((X.shape[2], X.shape[0], X2.shape[0]))
-            l = self.lengthscales.reshape(-1,1)
-            for i in range(X.shape[0]):
-                for j in range(X2.shape[0]):
-                    x_dif = ((X[i] - X2[j])/l).T # [N,d]
+            dist = np.zeros((X.shape[0], X.shape[1], X2.shape[1]))
+            for i in range(X.shape[1]):
+                for j in range(X2.shape[1]):
+                    x_dif = (X[:,i,:] - X2[:,j,:])/self.lengthscales # [N,d]
                     dist[:,i,j] = np.sum(x_dif*x_dif, axis=-1)
         else: # non-batched case
             dist = np.zeros((X.shape[0], X2.shape[0]))
-            l = self.lengthscales
             for i in range(X.shape[0]):
                 for j in range(X2.shape[0]):
-                    x_dif = (X[i] - X2[j])/l
+                    x_dif = (X[i] - X2[j])/self.lengthscales
                     dist[i,j] = np.sum(x_dif*x_dif, axis=-1)
         return dist
 
     def Kdiag(self, X):
         if len(X.shape)==3: # batched case
-            return np.ones((X.shape[2], X.shape[0]))
+            return np.ones((X.shape[0], X.shape[1]))
         else:
             return np.ones((X.shape[0]))
 
@@ -52,10 +50,10 @@ class RefCsymRBF(RefStationary):
     def Kdiag(self, X):
         if len(X.shape)==3: # batched case
             l = self.lengthscales.reshape(-1,1)
-            Xt = np.sum(X/l*X/l, axis=1)
-            diag = np.ones([X.shape[-1], X.shape[0]])
-            for i in range(X.shape[0]):
-                diag[:,i] += np.exp(-2.0*Xt[i,:])
+            Xt = np.sum(X/l*X/l, axis=2)
+            diag = np.ones([X.shape[0], X.shape[1]])
+            for i in range(X.shape[1]):
+                diag[:,i] += np.exp(-2.0*Xt[:,i])
         else:
             l = self.lengthscales
             Xt = np.sum(X/l*X/l, axis=1)
@@ -84,8 +82,8 @@ class test_kernel_global(unittest.TestCase):
         self.X = rng.randn(5,2)
         self.X2 = rng.randn(6,2)
         # batch_X
-        self.X_batch = rng.randn(5,2,10)
-        self.X2_batch = rng.randn(6,2,10)
+        self.X_batch = rng.randn(10,5,2)
+        self.X2_batch = rng.randn(10,6,2)
         # initialize
         self.m.initialize()
 
@@ -183,11 +181,11 @@ class test_kernel_global(unittest.TestCase):
             chol3 = self.m._session.run(self.m.k3.Cholesky(self.X_batch))
         # check shape
         self.assertTrue(np.allclose(chol1.shape,
-            [self.X_batch.shape[-1], self.X_batch.shape[0], self.X_batch.shape[0]]))
+            [self.X_batch.shape[0], self.X_batch.shape[1], self.X_batch.shape[1]]))
         self.assertTrue(np.allclose(chol2.shape,
-            [self.X_batch.shape[-1], self.X_batch.shape[0], self.X_batch.shape[0]]))
+            [self.X_batch.shape[0], self.X_batch.shape[1], self.X_batch.shape[1]]))
         self.assertTrue(np.allclose(chol3.shape,
-            [self.X_batch.shape[-1], self.X_batch.shape[0], self.X_batch.shape[0]]))
+            [self.X_batch.shape[0], self.X_batch.shape[1], self.X_batch.shape[1]]))
         for i in range(self.X_batch.shape[0]):
             self.assertTrue(np.allclose(K1[i,...],
                                 np.matmul(chol1[i,...], chol1[i,...].T), atol=1.0e-4))
