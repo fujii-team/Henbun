@@ -116,7 +116,9 @@ class test_variational(unittest.TestCase):
             KL = KL/num_samples
             KL_ana = gaussian_KL(self.m[shape].m.q_mu.value,
                                  self.m[shape].m.q_sqrt.value, q_shape=shape)
+            print('\n-----------------')
             print(KL, KL_ana)
+            print('-----------------\n')
             self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
     def test_feed(self):
@@ -329,7 +331,7 @@ def gaussian_KL(mu, L, q_shape='diagonal'):
             trace = np.sum(np.exp(2.0*L1))
         else: # fullrank
             L1  = L[i,:,:]
-            logdet = np.sum(np.log(np.diagonal(L1)))
+            logdet = np.sum(np.log(np.square(np.diagonal(L1))))
             trace = np.sum(np.square(L1))
         KL += -logdet - n + trace + np.dot(mu1.T, mu1)
     return KL*0.5

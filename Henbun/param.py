@@ -527,7 +527,7 @@ class Parameterized(Parentable):
             If not, feed separately by hand instead.'''
         # offset
         begin = np.zeros(len(n_layers) + 2)
-        size = -np.ones(len(n_layers) + 2)
+        size = n_layers + [-1] + [-1]
         for p in self.sorted_variables:
             # feed size should be in the last dimensions.
             size[-1] = p.feed_size
