@@ -136,10 +136,17 @@ class Variational(Parameterized):
         # samples from the posterior
         # u: i.i.d. sample
         if self.q_shape is 'diagonal':
-            return self.q_mu + tf.exp(self.q_sqrt) * u
+            if self._tf_mode:
+                return self.q_mu + tf.exp(self.q_sqrt) * u
+            else:
+                return self.q_mu + tf.exp(self.q_sqrt._tensor) * u
         else:
-            sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
-            return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
+            if self._tf_mode:
+                sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
+                return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
+            else:
+                sqrt = tf.matrix_band_part(self.q_sqrt._tensor,-1,0)
+                return self.q_mu._tensor + tf.einsum(self._einsum_matmul(), sqrt, u)
 
     def _einsum_matmul(self):
         """

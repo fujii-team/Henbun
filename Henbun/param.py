@@ -389,7 +389,7 @@ class Parameterized(Parentable):
                     if isinstance(p, (Variable, Parameterized)):
                         p.feed(value)
                         return
-            except:
+            except KeyError:
                 pass
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter

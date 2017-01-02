@@ -130,7 +130,7 @@ class test_variational_local(unittest.TestCase):
     def setUp(self):
         tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
-        self.shapes = ['fullrank', 'diagonal']
+        self.shapes = ['diagonal','fullrank']
         # n_layers=[3], n_batch=2, shape=[10,10] or [10]
         self.sqrts  = {'fullrank':self.rng.randn(3,2,10,10).astype(dtype=np_float_type),
                        'diagonal':self.rng.randn(3,2,10).astype(dtype=np_float_type)}
@@ -139,19 +139,13 @@ class test_variational_local(unittest.TestCase):
                 self.sqrts['fullrank'][i,:,j,j] = np.exp(0.1*self.sqrts['fullrank'][i,:,j,j])
                 for k in range(j+1,10):
                     self.sqrts['fullrank'][i,:,j,k] = 0.
-        self.x = self.rng.randn(3,2,10).astype(np_float_type)
         self.m = {}
+        self.x = self.rng.randn(3,2,10).astype(np_float_type)
         for shape in self.shapes:
             self.m[shape] = hb.model.Model()
             # Local Variational variable
             self.m[shape].m = hb.variationals.Normal([10],
                 n_layers=[3], q_shape=shape, collections=hb.param.graph_key.LOCAL)
-            if shape is 'fullrank':
-                self.m[shape].m.q_mu.feed(self.x)
-                self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,2,100))
-            else:
-                self.m[shape].m.q_mu.feed(self.x)
-                self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
             # batched Global param
             self.m[shape].q = hb.variationals.Normal([10], n_layers=[3],
                                                     n_batch=2, q_shape=shape)
@@ -160,6 +154,14 @@ class test_variational_local(unittest.TestCase):
             self.m[shape].initialize()
         # immitate _draw_samples
         self.samples_iid = self.rng.randn(3,2,10).astype(np_float_type)
+        '''
+        if shape is 'fullrank':
+            self.m[shape].m.q_mu.feed(self.x)
+            self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,2,100))
+        else:
+            self.m[shape].m.q_mu.feed(self.x)
+            self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
+        '''
 
     def test_get_variables(self):
         """ Test get_variables certainly works even if in tf_mode """
@@ -168,7 +170,8 @@ class test_variational_local(unittest.TestCase):
                 variables = self.m[shape].get_variables(hb.param.graph_key.LOCAL)
                 feed_size = self.m[shape].feed_size
                 # test feed certainly works
-                self.m[shape].feed(self.rng.randn(3, 100, feed_size).astype(np_float_type))
+                u = tf.constant(self.rng.randn(3, 2, feed_size), dtype=float_type)
+                self.m[shape].feed(u)
             # check feed_size is the same in tf_mode
             self.assertTrue(feed_size == self.m[shape].feed_size)
             self.assertTrue(self.m[shape].m.q_mu in variables)
@@ -186,6 +189,12 @@ class test_variational_local(unittest.TestCase):
                     logdets['diagonal'][i,j,k] = 2.0*self.sqrts['diagonal'][i,j,k]
         # check
         for shape in self.shapes:
+            if shape is 'fullrank':
+                self.m[shape].m.q_mu.feed(self.x)
+                self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,2,100))
+            else:
+                self.m[shape].m.q_mu.feed(self.x)
+                self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
             with self.m[shape].m.tf_mode():
                 logdet_m = self.m[shape].run(self.m[shape].m.logdet)
             with self.m[shape].q.tf_mode():
@@ -197,14 +206,19 @@ class test_variational_local(unittest.TestCase):
         for shape in self.shapes:
             with self.m[shape].tf_mode():
                 if shape is 'diagonal':
-                    self.m[shape].m =\
-                            np.concatenate([self.x, self.sqrts[shape].reshape(3,2,10)], axis=2)
+                    self.m[shape].m = tf.constant(
+                        value=np.concatenate([self.x, self.sqrts[shape].reshape(3,2,10)], axis=2),
+                        dtype=float_type)
                 else:
-                    self.m[shape].m =\
-                            np.concatenate([self.x, self.sqrts[shape].reshape(3,2,100)], axis=2)
+                    self.m[shape].m =tf.constant(
+                            value=np.concatenate([self.x, self.sqrts[shape].reshape(3,2,100)], axis=2),
+                            dtype=float_type)
                 # make sure Variational is seen as tf.Tensor in tf_mode
                 self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
             # make sure Variational is seen as Variational in non-tf_mode
+            print('\n-----------------------------')
+            print(type(self.m[shape].m))
+            print('-----------------------------\n')
             self.assertTrue(isinstance(self.m[shape].m, hb.variationals.Variational))
 
 class VariationalModel(hb.model.Model):
