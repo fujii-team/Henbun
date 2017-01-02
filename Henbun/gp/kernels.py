@@ -18,9 +18,10 @@
 import tensorflow as tf
 import numpy as np
 from .. import transforms
-from .._settings import settings
 from ..param import Variable, Parameterized, graph_key
 from ..variationals import Variational
+from ..tf_wraps import eye
+from .._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
 
@@ -96,7 +97,7 @@ class UnitStationary(Kern):
         If X is sized [N,n,d], this returns [N,n,n] where each [n,n] matrix
         is lower triangular.
         """
-        jitter = tf.eye(tf.shape(X)[-2])*settings.numerics.jitter_level
+        jitter = eye(tf.shape(X)[-2])*settings.numerics.jitter_level
         return tf.cholesky(self.K(X)+jitter)
 
 class UnitRBF(UnitStationary):

@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from ..param import Variable, Parameterized, graph_key
+from ..tf_wraps import eye
 from .._settings import settings
 float_type = settings.dtypes.float_type
 np_float_type = np.float32 if float_type is tf.float32 else np.float64
@@ -130,7 +131,7 @@ class SparseGP(GP):
                 return samples
             else: # fullrank
                 Knn = self.kern.K(x) # [n,n]
-                jitterI = tf.eye(tf.shape(x)[-2]) * jitter*2
+                jitterI = eye(tf.shape(x)[-2]) * jitter*2
                 chol = tf.cholesky(Knn - tf.batch_matmul(LnT, LnT, adj_x=True) + jitterI) # [n,n]
                 return samples + tf.matmul(
                             tf.random_normal([N,tf.shape(x)[0]], dtype=float_type), # [N,n]
@@ -142,7 +143,7 @@ class SparseGP(GP):
             # Effective upper-triangular cholesky factor L^T
             # Cholesky factor (upper triangluar) of K(z)^-1
             '''
-            LminvT = tf.matrix_triangular_solve(Lm, tf.eye(self.m)) # [m,m]
+            LminvT = tf.matrix_triangular_solve(Lm, eye(self.m)) # [m,m]
             LnT = tf.batch_matmul(tf.tile(tf.expand_dims(LminvT, 0), [N,1,1]),
                             self.kern.K(z, x), adj_x=True) # [N,m,n]
             '''
@@ -161,7 +162,7 @@ class SparseGP(GP):
                 return samples
             else: # fullrank case
                 Knn = self.kern.K(x) # [N,n,n]
-                jitterI = tf.eye(tf.shape(x)[-2]) * jitter*2
+                jitterI = eye(tf.shape(x)[-2]) * jitter*2
                 chol = tf.cholesky(Knn - tf.batch_matmul(LnT, LnT, adj_x=True) + jitterI) # [N,n,n]
                 return samples + tf.squeeze(tf.batch_matmul(
                     tf.random_normal([N, 1,tf.shape(x)[1]], dtype=float_type),
