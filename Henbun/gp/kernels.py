@@ -18,7 +18,6 @@
 import tensorflow as tf
 import numpy as np
 from .. import transforms
-from ..tf_wraps import eye
 from .._settings import settings
 from ..param import Variable, Parameterized, graph_key
 from ..variationals import Variational
@@ -68,19 +67,19 @@ class UnitStationary(Kern):
          - N: batch number.
         Returns: [N,n,n2] sized kernel value.
         """
-        X = X/self.lengthscales # [n,d]  or [N,n,d]
-        Xs = tf.reduce_sum(tf.square(X), -1) # [n] or [N,n]
+        Xeff = X/self.lengthscales # [n,d]  or [N,n,d]
+        Xs = tf.reduce_sum(tf.square(Xeff), -1) # [n] or [N,n]
         if X2 is None:
             # batched case : [N,n,d]@[N,d,n]->[N,n,n]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(X, X, adj_y=True) + \
+            return -2*tf.batch_matmul(Xeff, Xeff, adj_y=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(Xs, -2)
         else:
-            X2 = X2/self.lengthscales
-            X2s = tf.reduce_sum(tf.square(X2), -1)
+            X2eff = X2/self.lengthscales
+            X2s = tf.reduce_sum(tf.square(X2eff), -1)
             # batched case : [N,n,d]@[N,d,n2]->[N,n,n2]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(X, X2, adj_y=True) + \
+            return -2*tf.batch_matmul(Xeff, X2eff, adj_y=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(X2s, -2)
 
     def euclid_dist(self, X, X2):
@@ -93,17 +92,11 @@ class UnitStationary(Kern):
     def Cholesky(self, X):
         """
         Cholesky decomposition of K(X).
-        If X is sized [n,n], this returns [n,n].
-        If X is sized [n,n,N], this returns [n,n,N] where each [n,n] matrices
-        are lower triangular.
+        If X is sized [n,d], this returns [n,n].
+        If X is sized [N,n,d], this returns [N,n,n] where each [n,n] matrix
+        is lower triangular.
         """
-        jitter = settings.numerics.jitter_level
-        # callable to absorb the X-rank difference
-        # for non-batch X
-        def jitter1(): return eye(tf.shape(X)[0])*jitter
-        # for batch X.
-        def jitter2(): return tf.expand_dims(eye(tf.shape(X)[1]),0)* jitter
-        jitter = tf.cond(tf.equal(tf.rank(X), 2), jitter1, jitter2)
+        jitter = tf.eye(tf.shape(X)[-2])*settings.numerics.jitter_level
         return tf.cholesky(self.K(X)+jitter)
 
 class UnitRBF(UnitStationary):
@@ -132,6 +125,6 @@ class UnitCsymRBF(UnitStationary):
              + tf.exp(-self.square_dist(X, -X2)/2)
 
     def Kdiag(self, X):
-        X = X/self.lengthscales # [n,d]  or [N,n,d]
-        Xs = tf.reduce_sum(tf.square(X), -1) # [n] or [N,n]
+        Xeff = X/self.lengthscales # [n,d]  or [N,n,d]
+        Xs = tf.reduce_sum(tf.square(Xeff), -1) # [n] or [N,n]
         return tf.ones_like(Xs, dtype=float_type) + tf.exp(-2*Xs)

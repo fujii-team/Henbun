@@ -33,10 +33,10 @@ class test_gp(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.RandomState(0)
         self.m = hb.model.Model()
-        # dense gp
+        # dense gp N=20,m=30
         self.m.gp = hb.gp.GP(
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
-        # sparse gp
+        # sparse gp N=20,m=30, d=2
         self.m.sparse_gp = hb.gp.SparseGP(z= np.linspace(-2.0,2.0,60).reshape(-1,2),
             kern=hb.gp.kernels.UnitRBF(lengthscales=np.ones(1, np_float_type)))
         # variational posterior
@@ -52,7 +52,7 @@ class test_gp(unittest.TestCase):
             grad = tf.gradients(tf.reduce_sum(samples*samples),
                                     self.m.get_tf_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [30,20]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [20,30]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -67,7 +67,7 @@ class test_gp(unittest.TestCase):
             grad = tf.gradients(tf.reduce_sum(samples*samples),
                                     self.m.get_tf_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -78,10 +78,11 @@ class test_gp(unittest.TestCase):
                 # just test works fine
                 samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
             # assert shape
-            self.assertTrue(np.allclose(self.m.run(samples).shape, [40,20]))
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
 
     def test_batch(self):
-        x = tf.constant(self.rng.randn(200,20,2), dtype=float_type)
+        # n=200, N=20, d=2
+        x = tf.constant(self.rng.randn(20,40,2), dtype=float_type)
         #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
@@ -89,7 +90,7 @@ class test_gp(unittest.TestCase):
             # make sure gradients certainly works
             grad = tf.gradients(samples, tf.trainable_variables())
         # assert shape
-        self.assertTrue(np.allclose(self.m.run(samples).shape, [200,20]))
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
         # assert grad certainly works
         gvalues = [self.m.run(g) for g in grad if g is not None]
         self.assertTrue(len(gvalues)>0)
@@ -99,7 +100,7 @@ class test_gp(unittest.TestCase):
                 # just test works fine
                 samples = self.m.sparse_gp.samples(x, self.m.u, q_shape=q_shape)
             # assert shape
-            self.assertTrue(np.allclose(self.m.run(samples).shape, [200,20]))
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
 
 
 class gp(hb.model.Model):
@@ -121,7 +122,8 @@ class gp(hb.model.Model):
         """
         Likelihood by variational method
         """
-        Lq = tf.matmul(self.kern.Cholesky(self.X), self.q) * tf.sqrt(self.k_var)
+        Lq = tf.transpose(tf.matmul(self.q, self.kern.Cholesky(self.X), transpose_b=True) * tf.sqrt(self.k_var))
+        #Lq = tf.matmul(self.kern.Cholesky(self.X), self.q, transpose_b=True) * tf.sqrt(self.k_var)
         return tf.reduce_sum(hb.densities.gaussian(self.Y, Lq, self.var))\
                 - self.KL()
 
@@ -152,6 +154,8 @@ class test_gpr(unittest.TestCase):
         m.kern.lengthscales=1.0
         m.k_var=1.0
         m.var  =1.0
+        # initialize
+        m.q.q_sqrt = m.q.q_sqrt.value*0.01
         # adopt an exponential_decay of learning rate to maintain a good convergence.
         m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001))
         m.likelihood_var().optimize(maxiter=40000)
