@@ -156,14 +156,6 @@ class test_variational_local(unittest.TestCase):
             self.m[shape].initialize()
         # immitate _draw_samples
         self.samples_iid = self.rng.randn(3,2,10).astype(np_float_type)
-        '''
-        if shape is 'fullrank':
-            self.m[shape].m.q_mu.feed(self.x)
-            self.m[shape].m.q_sqrt.feed(self.sqrts[shape].reshape(3,2,100))
-        else:
-            self.m[shape].m.q_mu.feed(self.x)
-            self.m[shape].m.q_sqrt.feed(self.sqrts[shape])
-        '''
 
     def test_get_variables(self):
         """ Test get_variables certainly works even if in tf_mode """
@@ -222,6 +214,18 @@ class test_variational_local(unittest.TestCase):
             print(type(self.m[shape].m))
             print('-----------------------------\n')
             self.assertTrue(isinstance(self.m[shape].m, hb.variationals.Variational))
+
+    def test_feed_without_tf_mode(self):
+        for shape in self.shapes:
+            if shape is 'diagonal':
+                self.m[shape].m = tf.constant(
+                    value=np.concatenate([self.x, self.sqrts[shape].reshape(3,2,10)], axis=2),
+                    dtype=float_type)
+            else:
+                self.m[shape].m =tf.constant(
+                        value=np.concatenate([self.x, self.sqrts[shape].reshape(3,2,100)], axis=2),
+                        dtype=float_type)
+            self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
 
 class VariationalModel(hb.model.Model):
     def setUp(self):
