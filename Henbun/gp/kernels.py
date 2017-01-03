@@ -73,14 +73,14 @@ class UnitStationary(Kern):
         if X2 is None:
             # batched case : [N,n,d]@[N,d,n]->[N,n,n]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(Xeff, Xeff, adj_y=True) + \
+            return -2*tf.matmul(Xeff, Xeff, transpose_b=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(Xs, -2)
         else:
             X2eff = X2/self.lengthscales
             X2s = tf.reduce_sum(tf.square(X2eff), -1)
             # batched case : [N,n,d]@[N,d,n2]->[N,n,n2]
             # non-batch case:[n,d]@[d,n]->[n,n]->[n,n]
-            return -2*tf.batch_matmul(Xeff, X2eff, adj_y=True) + \
+            return -2*tf.matmul(Xeff, X2eff, transpose_b=True) + \
                         tf.expand_dims(Xs, -1) + tf.expand_dims(X2s, -2)
 
     def euclid_dist(self, X, X2):

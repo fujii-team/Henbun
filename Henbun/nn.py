@@ -29,7 +29,7 @@ class MatBias(Parameterized):
                             collections=collections)
 
     def __call__(self, x):
-        return clip(tf.batch_matmul(x, self.w) + self.b)
+        return clip(tf.matmul(x, self.w) + self.b)
 
 class NeuralNet(Parameterized):
     def __init__(self, nodes, n_layers = [],

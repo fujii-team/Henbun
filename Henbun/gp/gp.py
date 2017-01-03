@@ -47,7 +47,7 @@ class GP(Parameterized):
         The size of the first axis of x and u should be the same.
         """
         L = self.kern.Cholesky(x) # sized [n,n]
-        return tf.batch_matmul(u, L, adj_y=True) # sized [N,n]
+        return tf.matmul(u, L, transpose_b=True) # sized [N,n]
 
 
 class SparseGP(GP):
@@ -121,7 +121,7 @@ class SparseGP(GP):
         if x.get_shape().ndims==2:
             # Effective upper-triangular cholesky factor L^T
             LnT = tf.matrix_triangular_solve(Lm, self.kern.K(self.z, x)) # sized [m,n]
-            samples = tf.batch_matmul(u, LnT) # sized [N,n]
+            samples = tf.matmul(u, LnT) # sized [N,n]
             # additional variance due to the sparse approximation.
             if q_shape is 'diagonal':
                 diag_var = jitter + self.kern.Kdiag(x) - tf.reduce_sum(tf.square(LnT), -2)
@@ -132,7 +132,7 @@ class SparseGP(GP):
             else: # fullrank
                 Knn = self.kern.K(x) # [n,n]
                 jitterI = eye(tf.shape(x)[-2]) * jitter*2
-                chol = tf.cholesky(Knn - tf.batch_matmul(LnT, LnT, adj_x=True) + jitterI) # [n,n]
+                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, transpose_a=True) + jitterI) # [n,n]
                 return samples + tf.matmul(
                             tf.random_normal([N,tf.shape(x)[0]], dtype=float_type), # [N,n]
                             chol, transpose_b=True) # [N,n]@[n,n] -> [N,n]
@@ -144,7 +144,7 @@ class SparseGP(GP):
             # Cholesky factor (upper triangluar) of K(z)^-1
             '''
             LminvT = tf.matrix_triangular_solve(Lm, eye(self.m)) # [m,m]
-            LnT = tf.batch_matmul(tf.tile(tf.expand_dims(LminvT, 0), [N,1,1]),
+            LnT = tf.matmul(tf.tile(tf.expand_dims(LminvT, 0), [N,1,1]),
                             self.kern.K(z, x), adj_x=True) # [N,m,n]
             '''
             # TODO Do not understand why but the above fails in the following Cholesky factorization.
@@ -152,7 +152,7 @@ class SparseGP(GP):
             LnT = tf.matrix_triangular_solve(tf.tile(tf.expand_dims(Lm, 0), [N,1,1]),
                             self.kern.K(z, x)) # [N,m,n]
 
-            samples = tf.squeeze(tf.batch_matmul(tf.expand_dims(u,1), LnT), [1]) # [N,1,m]*[N,m,n]->[N,n]
+            samples = tf.squeeze(tf.matmul(tf.expand_dims(u,1), LnT), [1]) # [N,1,m]*[N,m,n]->[N,n]
             if q_shape is 'diagonal':
             # additional variance due to the sparse approximation.
                 diag_var = jitter + self.kern.Kdiag(x) - tf.reduce_sum(tf.square(LnT), -2) # [N,n]
@@ -163,9 +163,9 @@ class SparseGP(GP):
             else: # fullrank case
                 Knn = self.kern.K(x) # [N,n,n]
                 jitterI = eye(tf.shape(x)[-2]) * jitter*2
-                chol = tf.cholesky(Knn - tf.batch_matmul(LnT, LnT, adj_x=True) + jitterI) # [N,n,n]
-                return samples + tf.squeeze(tf.batch_matmul(
+                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, adj_x=True) + jitterI) # [N,n,n]
+                return samples + tf.squeeze(tf.matmul(
                     tf.random_normal([N, 1,tf.shape(x)[1]], dtype=float_type),
-                    chol, adj_y=True), [1])
+                    chol, transpose_b=True), [1])
 
         raise ValueError('shape is not specified for tensor x')
