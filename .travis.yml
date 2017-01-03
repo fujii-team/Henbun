@@ -21,4 +21,3 @@ install:
   - python setup.py install
 script:
   - nosetests --nologcapture testing
-Contact GitHub API Training Shop Blog About
