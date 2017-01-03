@@ -63,18 +63,6 @@ class Model(Parameterized):
         # TODO some tricks to avoid recompilation
         #self._needs_recompile = True
 
-        self._saver = self._get_saver()
-
-    def _get_saver(self):
-        """ prepare saver """
-        # --- setup savers.---
-        var_dict = {v.long_name: v._tensor for v in self.get_variables()
-                if v.collections not in graph_key.not_parameters}
-        if len(var_dict.keys()) > 0:
-            return tf.train.Saver(var_dict)
-        else:
-            return None
-
     @property
     def name(self):
         return self._name

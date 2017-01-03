@@ -337,6 +337,7 @@ class Parameterized(Parentable):
         Parentable.__init__(self)
         self._tf_mode = False
         self.scoped_keys = []
+        self._saver = None
 
     def __getattribute__(self, key):
         """
@@ -558,19 +559,37 @@ class Parameterized(Parentable):
         else:
             return reduce(tf.add, KL_list)
 
-    def save(self, save_path = None, global_step = None):
+    @property
+    def saver(self):
+        """
+        Property returns self._saver.
+        If self._saver is not yet prepared, it will be generated in this method.
+        """
+        if self._saver is None:
+            # prepare saver
+            var_dict = {v.long_name: v._tensor for v in self.get_variables()
+                    if v.collections not in graph_key.not_parameters}
+            #var_dict = {v._tensor.op.name: v._tensor for v in self.get_variables()
+            #        if v.collections not in graph_key.not_parameters}
+            self._saver = tf.train.Saver(var_dict)
+            if len(var_dict.keys()) == 0:
+                raise ValueError('This class does not contain any global variables.')
+        return self._saver
+
+    def save(self, save_path=None, global_step=None, latest_filename=None,
+            meta_graph_suffix='meta', write_meta_graph=True, write_state=True):
         """
         Returns: path of the saved-file.
         """
         if save_path is None:
             save_path = self.name + '.ckpt'
-        #
-        assert self.highest_parent._saver is not None
-        # do initialization for the case variables are not initialized.
+        # do initialization for if some variables are not initialized.
         self.highest_parent.initialize()
         # save
-        return self.highest_parent._saver.save(self.highest_parent._session,
-                                            save_path, global_step)
+        return self.saver.save(self.highest_parent._session, save_path,
+            global_step=global_step, latest_filename=latest_filename,
+            meta_graph_suffix=meta_graph_suffix,
+            write_meta_graph=write_meta_graph, write_state=write_state)
 
     def restore(self, save_path=None):
         """
@@ -578,8 +597,8 @@ class Parameterized(Parentable):
         """
         if save_path is None:
             save_path = self.name + '.ckpt'
-        assert self.highest_parent._saver is not None
-        self.highest_parent._saver.restore(self.highest_parent._session, save_path)
+
+        self.saver.restore(self.highest_parent._session, save_path)
         # raise down the initialized flag
         [v.finalize() for v in self.get_variables()]
 
