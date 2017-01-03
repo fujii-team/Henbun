@@ -89,7 +89,6 @@ class Model(Parameterized):
         """
         Run the assignment ops that is gathered by self.initialize_op
         """
-        # TODO should support tensorflow 0.12
         # self._session.run(tf.variables_initializer(self.parameters))
         self._session.run(self.initialize_ops)
         self.finalize()
@@ -258,11 +257,12 @@ class Optimizer(object):
         # manual initialization.
         self.model.initialize()
         # initialize un-initialized variable
-        self.model._session.run(tf.initialize_variables(
-            [v for v in tf.all_variables() if not
+        self.model._session.run(tf.variables_initializer(
+            [v for v in tf.global_variables() if not
              self.model._session.run(tf.is_variable_initialized(v))]))
         # make validation
         self.model.validate()
+        print('finished.')
 
     def feed_dict(self, minibatch_size=None, training=True):
         """

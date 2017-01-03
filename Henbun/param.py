@@ -36,7 +36,7 @@ class _GraphKey(object):
     DATA : flag for the data.
     """
     def __init__(self):
-        self.VARIABLES = tf.GraphKeys.VARIABLES
+        self.VARIABLES = tf.GraphKeys.GLOBAL_VARIABLES
         self.LOCAL = 'LOCAL'
         self.DATA = 'DATA'
 
@@ -206,7 +206,7 @@ class Variable(Parentable):
             self._tensor = tf.Variable(
                 tf.truncated_normal(_shape, dtype=float_type, mean=mean, stddev=stddev),
                                             dtype=float_type, collections=collections)
-            self._initialize_op = tf.initialize_variables([self._tensor])
+            self._initialize_op = tf.variables_initializer([self._tensor])
 
     def tensor(self):
         """

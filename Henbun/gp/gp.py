@@ -163,7 +163,7 @@ class SparseGP(GP):
             else: # fullrank case
                 Knn = self.kern.K(x) # [N,n,n]
                 jitterI = eye(tf.shape(x)[-2]) * jitter*2
-                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, adj_x=True) + jitterI) # [N,n,n]
+                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, transpose_a=True) + jitterI) # [N,n,n]
                 return samples + tf.squeeze(tf.matmul(
                     tf.random_normal([N, 1,tf.shape(x)[1]], dtype=float_type),
                     chol, transpose_b=True), [1])
