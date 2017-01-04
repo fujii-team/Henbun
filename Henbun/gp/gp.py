@@ -117,55 +117,76 @@ class SparseGP(GP):
 
         # TODO insert assertion for shape difference
 
-        # Non-batch case x:[n,d]. Return shape [N,n]
+        LnT = self._effective_LT(x)
         if x.get_shape().ndims==2:
-            # Effective upper-triangular cholesky factor L^T
-            LnT = tf.matrix_triangular_solve(Lm, self.kern.K(self.z, x)) # sized [m,n]
             samples = tf.matmul(u, LnT) # sized [N,n]
-            # additional variance due to the sparse approximation.
-            if q_shape is 'diagonal':
-                diag_var = jitter + self.kern.Kdiag(x) - tf.reduce_sum(tf.square(LnT), -2)
-                return samples + \
-                    tf.sqrt(tf.abs(diag_var)) * tf.random_normal(tf.shape(x)[:-1], dtype=float_type)
-            elif q_shape is 'neglected':
-                return samples
-            else: # fullrank
-                Knn = self.kern.K(x) # [n,n]
-                jitterI = eye(tf.shape(x)[-2]) * jitter*2
-                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, transpose_a=True) + jitterI) # [n,n]
-                return samples + tf.matmul(
-                            tf.random_normal([N,tf.shape(x)[0]], dtype=float_type), # [N,n]
-                            chol, transpose_b=True) # [N,n]@[n,n] -> [N,n]
-
-        # Batch case. x:[N,n,d]. Return shape [N,n]
         elif x.get_shape().ndims==3:
-            z = tf.tile(tf.expand_dims(self.z, 0), [N,1,1]) # [N,m,d]
-            # Effective upper-triangular cholesky factor L^T
-            # Cholesky factor (upper triangluar) of K(z)^-1
-            '''
-            LminvT = tf.matrix_triangular_solve(Lm, eye(self.m)) # [m,m]
-            LnT = tf.matmul(tf.tile(tf.expand_dims(LminvT, 0), [N,1,1]),
-                            self.kern.K(z, x), adj_x=True) # [N,m,n]
-            '''
-            # TODO Do not understand why but the above fails in the following Cholesky factorization.
-            # The below is an equivalent but much slower calculation.
-            LnT = tf.matrix_triangular_solve(tf.tile(tf.expand_dims(Lm, 0), [N,1,1]),
-                            self.kern.K(z, x)) # [N,m,n]
+            samples = tf.squeeze(
+                tf.matmul(tf.expand_dims(u,1), LnT), [1]) # [N,1,m]*[N,m,n]->[N,n]
 
-            samples = tf.squeeze(tf.matmul(tf.expand_dims(u,1), LnT), [1]) # [N,1,m]*[N,m,n]->[N,n]
-            if q_shape is 'diagonal':
-            # additional variance due to the sparse approximation.
-                diag_var = jitter + self.kern.Kdiag(x) - tf.reduce_sum(tf.square(LnT), -2) # [N,n]
-                return samples + \
-                    tf.sqrt(tf.abs(diag_var)) * tf.random_normal(tf.shape(x)[:-1], dtype=float_type)
-            elif q_shape is 'neglected':
-                return samples
-            else: # fullrank case
-                Knn = self.kern.K(x) # [N,n,n]
-                jitterI = eye(tf.shape(x)[-2]) * jitter*2
-                chol = tf.cholesky(Knn - tf.matmul(LnT, LnT, transpose_a=True) + jitterI) # [N,n,n]
+        if q_shape is 'neglected':
+            return samples
+        elif q_shape is 'diagonal':
+            diag_cov = self._additional_cov(x, LnT, 'diagonal')
+            return samples + tf.sqrt(tf.abs(diag_cov)) \
+                        * tf.random_normal(tf.shape(x)[:-1], dtype=float_type)
+        else: # 'fullrank'
+            jitterI = eye(tf.shape(x)[-2]) * jitter*2
+            chol = tf.cholesky(self._additional_cov(x, LnT, 'fullrank') + jitterI) # [n,n]
+            if x.get_shape().ndims==2:
+                return samples + tf.matmul(
+                    tf.random_normal([N,tf.shape(x)[0]], dtype=float_type), # [N,n]
+                    chol, transpose_b=True) # [N,n]@[n,n] -> [N,n]
+            elif x.get_shape().ndims==3:
                 return samples + tf.squeeze(tf.matmul(
                     tf.random_normal([N, 1,tf.shape(x)[1]], dtype=float_type),
                     chol, transpose_b=True), [1])
 
+
+    def _effective_LT(self, x):
+        """
+        Returns the effective cholesky factor,
+              - T       - 1
+        K   L      =  L     K
+         nm                  mn
+                 T
+        with L L   = K
+                      mm
+        args:
+        + x : coordinate for the prediction, sized [N,n,d] or [n,d]
+        """
+        # Cholesky factor of K(z,z)
+        Lm = self.kern.Cholesky(self.z) # sized [m,m]
+        if x.get_shape().ndims==2:
+            # [m,n] -> [n,m]
+            return tf.matrix_triangular_solve(Lm, self.kern.K(self.z, x))
+            #Lminv = tf.matrix_triangular_solve(Lm, eye(self.m)) # [m,m]
+            #return tf.matmul(Lminv, self.kern.K(self.z, x)) # [m,m]@[m,n]->[m,n]
+
+        # batch case
+        elif x.get_shape().ndims==3:
+            N = tf.shape(x)[0]
+            Lminv = tf.matrix_triangular_solve(Lm, eye(self.m)) # [m,m]
+            z = tf.tile(tf.expand_dims(self.z, 0), [N,1,1])
+            return tf.matmul(tf.tile(tf.expand_dims(Lminv, 0), [N,1,1]), #[N,m,m]
+                             self.kern.K(z, x)) # [N,m,m]@[N,m,n] -> [N,m,n]
+
         raise ValueError('shape is not specified for tensor x')
+
+
+    def _additional_cov(self, x, LnT, q_shape):
+        """
+        Returns the additional GP covariance due to the sparse approximation.
+        Knn-Knm*Kmm^-1*Kmn
+
+        args:
+        + x : coordinate for the prediction, sized [N,n,d] or [n,d]
+        + LnT: Effective Cholesky factor, L^-1 Kmn
+        + q_shape: 'diagonal' or 'fullrank'. If it is 'diagonal', it returns
+        only the diagonal part of the covariance.
+        """
+        if q_shape is 'diagonal':
+            return self.kern.Kdiag(x) - tf.reduce_sum(tf.square(LnT), -2) # [N,n]
+        else:
+            Knn = self.kern.K(x) # [N,n,n] or [n,n]
+            return Knn - tf.matmul(LnT, LnT, transpose_a=True)

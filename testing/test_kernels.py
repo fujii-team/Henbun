@@ -107,6 +107,21 @@ class test_kernel_global(unittest.TestCase):
         self.assertTrue(np.allclose(K2, self.k2_ref.K(self.X_batch,self.X_batch), atol=1.0e-4))
         self.assertTrue(np.allclose(K3, self.k3_ref.K(self.X_batch,self.X_batch), atol=1.0e-4))
 
+    def test_K_batch_nonbatch(self):
+        # make sure the batch and non-batch calculation are identical
+        rng = np.random.RandomState(0)
+        X = rng.randn(5,2)
+        with self.m.tf_mode():
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k1.K(X)), # non-batch
+                self.m._session.run(self.m.k1.K(X.reshape(1,-1,2)))))# batch
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k2.K(X)), # non-batch
+                self.m._session.run(self.m.k2.K(X.reshape(1,-1,2)))))# batch
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k3.K(X)), # non-batch
+                self.m._session.run(self.m.k3.K(X.reshape(1,-1,2)))))# batch
+
     def test_K2(self):
         # non-batch case
         with self.m.tf_mode():
@@ -131,6 +146,22 @@ class test_kernel_global(unittest.TestCase):
             K3 = self.m._session.run(self.m.k3.K(self.X_batch, self.X2_batch))
         self.assertTrue(np.allclose(K1, self.k1_ref.K(self.X_batch,self.X2_batch), atol=1.0e-4))
         self.assertTrue(np.allclose(K2, self.k2_ref.K(self.X_batch,self.X2_batch), atol=1.0e-4))
+
+    def test_K2_batch_nonbatch(self):
+        # make sure the batch and non-batch calculation are identical
+        rng = np.random.RandomState(0)
+        X = rng.randn(5,2)
+        X2 = rng.randn(6,2)
+        with self.m.tf_mode():
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k1.K(X, X2)), # non-batch
+                self.m._session.run(self.m.k1.K(X.reshape(1,-1,2), X2.reshape(1,-1,2)))))# batch
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k2.K(X, X2)), # non-batch
+                self.m._session.run(self.m.k2.K(X.reshape(1,-1,2), X2.reshape(1,-1,2)))))# batch
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k3.K(X, X2)), # non-batch
+                self.m._session.run(self.m.k3.K(X.reshape(1,-1,2), X2.reshape(1,-1,2)))))# batch
 
     def test_Kdiag(self):
         with self.m.tf_mode():
@@ -193,6 +224,22 @@ class test_kernel_global(unittest.TestCase):
                                 np.matmul(chol2[i,...], chol2[i,...].T), atol=1.0e-4))
             self.assertTrue(np.allclose(K3[i,...],
                                 np.matmul(chol3[i,...], chol3[i,...].T), atol=1.0e-3))
+
+    def test_cholesky_batch_nonbatch(self):
+        # make sure the batch and non-batch calculation are identical
+        rng = np.random.RandomState(0)
+        X = rng.randn(5,2)
+        with self.m.tf_mode():
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k1.K(X)),
+                self.m._session.run(self.m.k1.K(X.reshape(1,-1,2)))))
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k2.K(X)),
+                self.m._session.run(self.m.k2.K(X.reshape(1,-1,2)))))
+            self.assertTrue(np.allclose(
+                self.m._session.run(self.m.k3.K(X)),
+                self.m._session.run(self.m.k3.K(X.reshape(1,-1,2)))))
+
 
 if __name__ == '__main__':
     unittest.main()
