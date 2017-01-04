@@ -131,7 +131,7 @@ class SparseGP(GP):
             return samples + tf.sqrt(tf.abs(diag_cov)) \
                         * tf.random_normal(tf.shape(x)[:-1], dtype=float_type)
         else: # 'fullrank'
-            jitterI = eye(tf.shape(x)[-2]) * jitter*2
+            jitterI = eye(tf.shape(x)[-2]) * jitter
             chol = tf.cholesky(self._additional_cov(x, LnT, 'fullrank') + jitterI) # [n,n]
             if x.get_shape().ndims==2:
                 return samples + tf.matmul(
