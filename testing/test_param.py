@@ -119,7 +119,7 @@ class ParamTestsScalar(unittest.TestCase):
         val = self.rng.randn(10, self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
-        self.m._session.run(tf.variables_initializer_variables([tensor]))
+        self.m._session.run(tf.variables_initializer([tensor]))
         self.assertTrue(np.allclose(val[:,:3], self.m.q.value))
         self.assertTrue(np.allclose(val[:,3:].flatten(), self.m.r.value.flatten()))
 
