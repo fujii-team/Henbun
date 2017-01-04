@@ -109,7 +109,7 @@ class ParamTestsScalar(unittest.TestCase):
         self.m.q.feed(tensor_q)
         self.m.r.feed(tensor_r)
         self.m.s = val_s
-        self.m._session.run(tf.initialize_variables([tensor_q, tensor_r]))
+        self.m._session.run(tf.variables_initializer([tensor_q, tensor_r]))
         self.assertTrue(np.allclose(val_q, self.m.q.value))
         self.assertTrue(np.allclose(val_r.flatten(), self.m.r.value.flatten()))
         self.assertTrue(np.allclose(val_s, self.m.s.value))
@@ -119,7 +119,7 @@ class ParamTestsScalar(unittest.TestCase):
         val = self.rng.randn(10, self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
-        self.m._session.run(tf.initialize_variables([tensor]))
+        self.m._session.run(tf.variables_initializer_variables([tensor]))
         self.assertTrue(np.allclose(val[:,:3], self.m.q.value))
         self.assertTrue(np.allclose(val[:,3:].flatten(), self.m.r.value.flatten()))
 
@@ -144,7 +144,7 @@ class ParamTestLayered(unittest.TestCase):
         val = self.rng.randn(2,3,10,self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
-        self.m._session.run(tf.initialize_variables([tensor]))
+        self.m._session.run(tf.variables_initializer([tensor]))
         self.assertTrue(np.allclose(val[:,:,:,:3].flatten(), self.m.q.value.flatten()))
         self.assertTrue(np.allclose(val[:,:,:,3:].flatten(), self.m.r.value.flatten()))
 
@@ -197,7 +197,7 @@ class ParamTestsDeeper(unittest.TestCase):
         val = self.rng.randn(10, self.m.feed_size)
         tensor = tf.Variable(val, dtype=float_type)
         self.m.feed(tensor)
-        self.m._session.run(tf.initialize_variables([tensor]))
+        self.m._session.run(tf.variables_initializer([tensor]))
         self.assertTrue(np.allclose(val[:,:3].flatten(), self.m.foo.bar.q.value.flatten()))
         self.assertTrue(np.allclose(val[:,3:].flatten(), self.m.foo.bar.r.value.flatten()))
 
