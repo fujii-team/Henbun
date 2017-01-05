@@ -706,11 +706,11 @@ class MinibatchData(Variable):
     Class for feeding minibatch-data into Graph.
     The minibatch index should be in the first axis.
     """
-    def __init__(self, data, n_batch=None):
+    def __init__(self, data):
         # call initializer
-        Variable.__init__(self, data.shape[0:], n_layers=[], n_batch=n_batch,
+        Variable.__init__(self, data.shape[1:], n_layers=[], n_batch=None,
                                                 collections=graph_key.DATA)
-        shape = list(self.n_layers) + list(self.shape) + [n_batch]
+        shape = list(self.n_layers) + [None] + list(self.shape)
         self._tensor = tf.placeholder(shape=shape, dtype=float_type)
         self.data = data
 
