@@ -141,12 +141,16 @@ class Variational(Parameterized):
             else:
                 return self.q_mu + tf.exp(self.q_sqrt._tensor) * u
         else:
-            if self._tf_mode:
+            def _sample_(u):
                 sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
-                return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
+                return self.q_mu + tf.squeeze(tf.matmul(sqrt, tf.expand_dims(u, -1)), [-1])
+                # The following should be faster.
+                #return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
+            if not self._tf_mode:
+                with self.tf_mode():
+                    return _sample_(u)
             else:
-                sqrt = tf.matrix_band_part(self.q_sqrt._tensor,-1,0)
-                return self.q_mu._tensor + tf.einsum(self._einsum_matmul(), sqrt, u)
+                return _sample_(u)
 
     def _einsum_matmul(self):
         """
