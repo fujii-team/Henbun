@@ -128,6 +128,12 @@ class test_model3(unittest.TestCase):
         self.m.likelihood().compile()
         self.assertTrue(self.m._index.data_size == 200)
 
+        # check the data size
+        test_feed = self.m.test_feed_dict(20)
+        with self.m.tf_mode():
+            d = self.m.run(self.m.d, feed_dict = test_feed)
+        self.assertTrue(d.shape == (20,2,3))
+
 class ModelWithKeyword(hb.model.Model):
     def setUp(self, key1, key2):
         self.key1=key1
