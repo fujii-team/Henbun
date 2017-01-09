@@ -683,12 +683,24 @@ class Data(Variable):
                                                 collections=graph_key.DATA)
         # prepare placeholder
         shape = list(self.n_layers) + list(self.shape)
-        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        self._tensor = tf.placeholder(shape=shape, dtype=self._get_type(data))
         self.data = data
+
+    def _get_type(self, array):
+        """
+        Work out what a sensible type for the array is. if the default type
+        is float32, downcast 64bit float to float32. For ints, assume int32
+        """
+        if any([array.dtype == np.dtype(t) for t in [np.float32, np.float64]]):
+            return float_type
+        elif any([array.dtype == np.dtype(t) for t in [np.int16, np.int32, np.int64]]):
+            return tf.int32
+        else:
+            raise NotImplementedError("unknown dtype")
 
     def get_feed_dict(self, minibatch_index=None):
         """
-        This method should be implemented in the child class
+        Returns the feed dict.
         """
         return {self._tensor: self.data}
 
@@ -697,11 +709,11 @@ class Data(Variable):
         Assign value for self._tensor.
         The initialize_ops is updated and _assigned flag raised.
         """
-        if not np.all(value.shape == self._tensor.get_shape()):
+        if not np.all(value.shape == self.data.shape):
             raise ValueError('The shape of data must be the same.')
         self.data = value
 
-class MinibatchData(Variable):
+class MinibatchData(Data):
     """
     Class for feeding minibatch-data into Graph.
     The minibatch index should be in the first axis.
@@ -711,7 +723,7 @@ class MinibatchData(Variable):
         Variable.__init__(self, data.shape[1:], n_layers=[], n_batch=None,
                                                 collections=graph_key.DATA)
         shape = list(self.n_layers) + [None] + list(self.shape)
-        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        self._tensor = tf.placeholder(shape=shape, dtype=self._get_type(data))
         self.data = data
 
     @property
@@ -720,7 +732,7 @@ class MinibatchData(Variable):
 
     def get_feed_dict(self, minibatch_index):
         """
-        This method should be implemented in the child class
+        Returns the feed dict.
         """
         if minibatch_index is None:
             return {}

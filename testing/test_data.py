@@ -12,12 +12,15 @@ class TestData(unittest.TestCase):
         self.rng = np.random.RandomState(0)
         self.x = self.rng.randn(3,2)
         self.y = self.rng.randn(4,3)
+        # integer data
+        self.z = self.rng.randint(1,30,20)
         # --- define model ---
         tf.reset_default_graph()
         self.m = hb.model.Model()
         self.m.p = hb.param.Parameterized()
         self.m.x = hb.param.Data(self.x)
         self.m.p.y = hb.param.Data(self.y)
+        self.m.p.z = hb.param.Data(self.z)
 
     def test_value(self):
         x = self.m.x.value
@@ -36,6 +39,10 @@ class TestData(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.m.p.y = self.rng.randn(4,4)
 
+    def test_dtype(self):
+        with self.m.tf_mode():
+            self.assertTrue(self.m.p.y.dtype is float_type)
+            self.assertTrue(self.m.p.z.dtype is tf.int32)
 
 if __name__ == "__main__":
     unittest.main()
