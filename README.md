@@ -48,6 +48,7 @@ In the following notebooks, some structures of Henbun are described.
 # Dependencies and Installation
 **Henbun** heavily depends on
 + [**TensorFlow**](https://www.tensorflow.org/): a Large-Scale Machine Learning library.
+Henbun requires TensorFlow > 0.12.
 
 Before installing **Henbun**, **TensorFlow** must be installed.
 
