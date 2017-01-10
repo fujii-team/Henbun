@@ -36,7 +36,7 @@ class _GraphKey(object):
     DATA : flag for the data.
     """
     def __init__(self):
-        self.VARIABLES = tf.GraphKeys.VARIABLES
+        self.VARIABLES = tf.GraphKeys.GLOBAL_VARIABLES
         self.LOCAL = 'LOCAL'
         self.DATA = 'DATA'
 
@@ -176,6 +176,8 @@ class Variable(Parentable):
             However, it will maintain the compatibility between global and local
             parameters.
 
+        The shape of this variables will be [*n_layers, *n_batches, *shape].
+
         - transform: one of transforms.
             For example we can constrain the variable in positive space,
             >>> transform = transforms.positive
@@ -200,11 +202,11 @@ class Variable(Parentable):
             if self.n_batch is None:
                 _shape = list(n_layers) + list(shape)
             else:
-                _shape = list(n_layers) + list(shape) + [self.n_batch]
+                _shape = list(n_layers) + [self.n_batch] + list(shape)
             self._tensor = tf.Variable(
                 tf.truncated_normal(_shape, dtype=float_type, mean=mean, stddev=stddev),
                                             dtype=float_type, collections=collections)
-            self._initialize_op = tf.initialize_variables([self._tensor])
+            self._initialize_op = tf.variables_initializer([self._tensor])
 
     def tensor(self):
         """
@@ -296,10 +298,9 @@ class Variable(Parentable):
             # check if the shape is the same
             if hasattr(x, "get_shape"):
                 shape = x.get_shape()
-                if self.n_batch is not None and shape[-1] is not None:
-                    assert(shape[-1]==self.n_batch)
-            shape2 = self.n_layers + self.shape + [tf.shape(x)[-1],]
-            # --- clip value ---
+                if self.n_batch is not None and shape[-2] is not None:
+                    assert(shape[-2]==self.n_batch)
+            shape2 = self.n_layers + [tf.shape(x)[-2],] + self.shape
             self._tensor = tf.reshape(x, shape2)
 
     def get_feed_dict(self, minibatch_index):
@@ -336,6 +337,7 @@ class Parameterized(Parentable):
         Parentable.__init__(self)
         self._tf_mode = False
         self.scoped_keys = []
+        self._saver = None
 
     def __getattribute__(self, key):
         """
@@ -388,7 +390,7 @@ class Parameterized(Parentable):
                     if isinstance(p, (Variable, Parameterized)):
                         p.feed(value)
                         return
-            except:
+            except KeyError:
                 pass
             # if the existing attribute is a parameter, and the value is an
             # array (or float, int), then set the _array of that parameter
@@ -526,12 +528,13 @@ class Parameterized(Parentable):
             If not, feed separately by hand instead.'''
         # offset
         begin = np.zeros(len(n_layers) + 2)
-        size = -np.ones(len(n_layers) + 2)
+        size = n_layers + [-1] + [-1]
         for p in self.sorted_variables:
-            size[-2] = p.feed_size
+            # feed size should be in the last dimensions.
+            size[-1] = p.feed_size
             p.feed(tf.slice(x, tf.convert_to_tensor(begin, dtype=tf.int32),
                                tf.convert_to_tensor(size,  dtype=tf.int32)))
-            begin[-2] += p.feed_size
+            begin[-1] += p.feed_size
 
     def get_feed_dict(self, minibatch_index=None):
         """
@@ -556,6 +559,48 @@ class Parameterized(Parentable):
         else:
             return reduce(tf.add, KL_list)
 
+    @property
+    def saver(self):
+        """
+        Property returns self._saver.
+        If self._saver is not yet prepared, it will be generated in this method.
+        """
+        if self._saver is None:
+            # prepare saver
+            var_dict = {v.long_name: v._tensor for v in self.get_variables()
+                    if v.collections not in graph_key.not_parameters}
+            #var_dict = {v._tensor.op.name: v._tensor for v in self.get_variables()
+            #        if v.collections not in graph_key.not_parameters}
+            self._saver = tf.train.Saver(var_dict)
+            if len(var_dict.keys()) == 0:
+                raise ValueError('This class does not contain any global variables.')
+        return self._saver
+
+    def save(self, save_path=None, global_step=None, latest_filename=None,
+            meta_graph_suffix='meta', write_meta_graph=True, write_state=True):
+        """
+        Returns: path of the saved-file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+        # do initialization for if some variables are not initialized.
+        self.highest_parent.initialize()
+        # save
+        return self.saver.save(self.highest_parent._session, save_path,
+            global_step=global_step, latest_filename=latest_filename,
+            meta_graph_suffix=meta_graph_suffix,
+            write_meta_graph=write_meta_graph, write_state=write_state)
+
+    def restore(self, save_path=None):
+        """
+        Restore the parameter from file.
+        """
+        if save_path is None:
+            save_path = self.name + '.ckpt'
+
+        self.saver.restore(self.highest_parent._session, save_path)
+        # raise down the initialized flag
+        [v.finalize() for v in self.get_variables()]
 
 class ParamList(Parameterized):
     """
@@ -638,12 +683,24 @@ class Data(Variable):
                                                 collections=graph_key.DATA)
         # prepare placeholder
         shape = list(self.n_layers) + list(self.shape)
-        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        self._tensor = tf.placeholder(shape=shape, dtype=self._get_type(data))
         self.data = data
+
+    def _get_type(self, array):
+        """
+        Work out what a sensible type for the array is. if the default type
+        is float32, downcast 64bit float to float32. For ints, assume int32
+        """
+        if any([array.dtype == np.dtype(t) for t in [np.float32, np.float64]]):
+            return float_type
+        elif any([array.dtype == np.dtype(t) for t in [np.int16, np.int32, np.int64]]):
+            return tf.int32
+        else:
+            raise NotImplementedError("unknown dtype")
 
     def get_feed_dict(self, minibatch_index=None):
         """
-        This method should be implemented in the child class
+        Returns the feed dict.
         """
         return {self._tensor: self.data}
 
@@ -652,30 +709,31 @@ class Data(Variable):
         Assign value for self._tensor.
         The initialize_ops is updated and _assigned flag raised.
         """
-        if not np.all(value.shape == self._tensor.get_shape()):
+        if not np.all(value.shape == self.data.shape):
             raise ValueError('The shape of data must be the same.')
         self.data = value
 
-class MinibatchData(Variable):
+class MinibatchData(Data):
     """
     Class for feeding minibatch-data into Graph.
+    The minibatch index should be in the first axis.
     """
-    def __init__(self, data, n_batch=None):
+    def __init__(self, data):
         # call initializer
-        Variable.__init__(self, data.shape[:-1], n_layers=[], n_batch=n_batch,
+        Variable.__init__(self, data.shape[1:], n_layers=[], n_batch=None,
                                                 collections=graph_key.DATA)
-        shape = list(self.n_layers) + list(self.shape) + [n_batch]
-        self._tensor = tf.placeholder(shape=shape, dtype=float_type)
+        shape = list(self.n_layers) + [None] + list(self.shape)
+        self._tensor = tf.placeholder(shape=shape, dtype=self._get_type(data))
         self.data = data
 
     @property
     def data_size(self):
-        return self.data.shape[-1]
+        return self.data.shape[0]
 
     def get_feed_dict(self, minibatch_index):
         """
-        This method should be implemented in the child class
+        Returns the feed dict.
         """
         if minibatch_index is None:
             return {}
-        return {self._tensor: self.data[...,minibatch_index]}
+        return {self._tensor: self.data[minibatch_index]}

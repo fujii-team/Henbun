@@ -22,7 +22,7 @@ class test_square(unittest.TestCase):
         with self.m.tf_mode():
             op = tf.neg(self.m.likelihood())
             opt_op = trainer.minimize(op, var_list = self.m.get_tf_variables())
-            self.m._session.run(tf.initialize_all_variables())
+            self.m._session.run(tf.variables_initializer(tf.global_variables()))
         for i in range(1000):
             self.m._session.run(opt_op)
         self.assertTrue(np.allclose(self.m.p.value, np.zeros((2,3)), atol=1.0e-4))
