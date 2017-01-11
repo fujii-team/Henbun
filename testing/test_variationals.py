@@ -128,17 +128,56 @@ class test_variational(unittest.TestCase):
             self.m[shape].m.feed(np.ones(10))
             self.assertTrue(tensor_ref is self.m[shape].m._tensor)
 
+
+class Test_n_samples(unittest.TestCase):
+    def setUp(self):
+        """
+        Test variationals works fine
+        """
+        """ Prepare fullrank and diagonal variationals """
+        tf.set_random_seed(0)
+        self.n_samples = 201
+        self.rng = np.random.RandomState(0)
+        self.shapes = ['fullrank', 'diagonal']
+        self.sqrts  = {'fullrank':self.rng.randn(3,10,10)*0.1,
+                       'diagonal':self.rng.randn(3,10)*0.1-0.5}
+        for i in range(3): # remove upper triangular part
+            for j in range(10):
+                self.sqrts['fullrank'][i,j,j] = 0.1*np.exp(self.sqrts['fullrank'][i,j,j])
+                for k in range(j+1,10):
+                    self.sqrts['fullrank'][i,j,k] = 0.
+        self.x = self.rng.randn(3,10)*3.0
+        self.m = {}
+        for shape in self.shapes:
+            self.m[shape] = hb.model.Model()
+            self.m[shape].m = hb.variationals.Normal(self.x.shape[-1],
+                        n_layers=[3], n_samples=self.n_samples, q_shape=shape)
+            self.m[shape].m.q_mu = self.x
+            self.m[shape].m.q_sqrt = self.sqrts[shape]
+
+        # immitate _draw_samples
+        self.samples_iid = self.rng.randn(3,self.n_samples, 10).astype(np_float_type)
+        for shape in self.shapes:
+            self.m[shape].initialize()
+
+    def test_sample(self):
+        """ make sure variational.sample works well """
+        for shape in self.shapes:
+            with self.m[shape].tf_mode():
+                value = self.m[shape].run(self.m[shape].m)
+                self.assertTrue(value.shape == (3,self.n_samples, 10))
+            value_mean = np.mean(value, axis=1)
+            print(value_mean, self.x)
+            self.assertTrue(np.allclose(value_mean, self.x, atol=0.1))
+
+    def test_logdet(self):
+        pass
+
 class test_variational_local(unittest.TestCase):
     def setUp(self):
         tf.set_random_seed(0)
         self.rng = np.random.RandomState(0)
-        #-------------------------------------
-        #
-        # TODO Awaiting bugfix of tensorflow
-        #
-        #--------------------------------------
         self.shapes = ['diagonal','fullrank']
-        #self.shapes = ['diagonal']
         # n_layers=[3], n_batch=2, shape=[10,10] or [10]
         self.sqrts  = {'fullrank':self.rng.randn(3,2,10,10).astype(dtype=np_float_type),
                        'diagonal':self.rng.randn(3,2,10).astype(dtype=np_float_type)}
@@ -284,6 +323,7 @@ class test_initial_values(unittest.TestCase):
         sqrt = m.q.q_sqrt.value
         diag = np.diagonal(sqrt)
         self.assertTrue(np.all(diag > 0.0))
+
 
 class TestGaussian(unittest.TestCase):
     """

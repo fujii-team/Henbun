@@ -39,6 +39,7 @@ class Variational(Parameterized):
     considered (This axes are flattened in this class).
     """
     def __init__(self, shape, n_layers=[], n_batch=None,
+        n_samples=None,
         q_shape='diagonal', mean=0.0, stddev=1.0,
         prior=None, transform=transforms.Identity(),
         collections=[graph_key.VARIABLES]):
@@ -54,8 +55,11 @@ class Variational(Parameterized):
                 None is given. If a certain value is specified, then Local and
                 Global variables behave same.
 
-        The shape of this variables will be [*n_layers, *n_batches, *shape],
-        as param.Variable
+        - n_samples: Integer representing number of samples from one variational
+                posteriors.
+                If None, number of samples is 1.
+
+        The shape of this variables will be [*n_layers, n_batches, n_samples, *shape],
 
         - mean: initial mean of the variational parameters.
 
@@ -76,6 +80,7 @@ class Variational(Parameterized):
         self._shape = list([shape]) if isinstance(shape, int) else list(shape)
         self.n_layers = list([n_layers]) if isinstance(n_layers, int) else list(n_layers)
         self.n_batch = n_batch
+        self.n_samples = n_samples
         self.size = int(reduce(np.multiply, self._shape))
         self.collections = collections
         # for the variational parameters
@@ -100,9 +105,16 @@ class Variational(Parameterized):
         # sampling is made if this is not LOCAL parameters
         if self.collections is not graph_key.LOCAL:
             if self.n_batch is None:
-                sample_shape = list(self.n_layers) + [self.size]
+                if self.n_samples is None:
+                    sample_shape = list(self.n_layers) + [self.size]
+                else:
+                    sample_shape = list(self.n_layers) + [self.n_samples] + [self.size]
             else:
-                sample_shape = list(self.n_layers) + [self.n_batch] + [self.size]
+                if self.n_samples is None:
+                    sample_shape = list(self.n_layers) + [self.n_batch] + [self.size]
+                else:
+                    sample_shape = list(self.n_layers) + [self.n_batch] + [self.n_samples] + [self.size]
+
             # sample from i.i.d.
             self.u = tf.random_normal(sample_shape, dtype=float_type)
             with self.tf_mode():
@@ -114,9 +126,15 @@ class Variational(Parameterized):
         In tf_mode, this class is seen as a sample from the variational distribution.
         """
         if self.collections is not graph_key.LOCAL and self.n_batch is None:
-            return clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape))
+            if self.n_samples is None:
+                return clip(tf.reshape(self.transformed_tensor, self.n_layers + self._shape))
+            else:
+                return clip(tf.reshape(self.transformed_tensor, self.n_layers + [self.n_samples] + self._shape))
         else:
-            return clip(tf.reshape(self.transformed_tensor, self.n_layers + [-1] + self._shape))
+            if self.n_samples is None:
+                return clip(tf.reshape(self.transformed_tensor, self.n_layers + [-1] + self._shape))
+            else:
+                return clip(tf.reshape(self.transformed_tensor, self.n_layers + [self.n_samples] + [-1] + self._shape))
 
     def feed(self, x):
         """ sampling is made in this method for the LOCAL case """
@@ -135,21 +153,31 @@ class Variational(Parameterized):
         # Build the sampling Ops
         # samples from the posterior
         # u: i.i.d. sample
-        if self.q_shape is 'diagonal':
-            if self._tf_mode:
-                return self.q_mu + tf.exp(self.q_sqrt) * u
-            else:
-                return self.q_mu + tf.exp(self.q_sqrt._tensor) * u
-        else:
-            def _sample_(u):
+        def _sample_(u):
+            # Temporary method to get samples.
+            if self.q_shape is 'diagonal':
+                if self.n_samples is None:
+                    return self.q_mu + tf.exp(self.q_sqrt) * u
+                else:
+                    q_mu = tf.expand_dims(self.q_mu, [-2])
+                    sqrt = tf.expand_dims(tf.exp(self.q_sqrt), [-2])
+                    return q_mu + sqrt * u
+
+            else: # fullrank
                 sqrt = tf.matrix_band_part(self.q_sqrt,-1,0)
-                return self.q_mu + tf.squeeze(tf.matmul(sqrt, tf.expand_dims(u, -1)), [-1])
+                if self.n_samples is None:
+                    return self.q_mu + tf.squeeze(tf.matmul(sqrt, tf.expand_dims(u, -1)), [-1])
+                else:
+                    q_mu = tf.expand_dims(self.q_mu, [-2])
+                    return q_mu + tf.matmul(u, sqrt, transpose_b=True)
+
                 # The following should be faster.
                 #return self.q_mu + tf.einsum(self._einsum_matmul(), sqrt, u)
-            if not self._tf_mode:
-                with self.tf_mode():
-                    return _sample_(u)
-            else:
+
+        if self._tf_mode:
+            return _sample_(u)
+        else:
+            with self.tf_mode():
                 return _sample_(u)
 
     def _einsum_matmul(self):
@@ -175,15 +203,26 @@ class Variational(Parameterized):
             index3 = alphabet[:n+2] # '...ijk'
             return index1+','+index2+'->'+index3
 
+    def _logdet(self):
+        """
+        Returns the log-determinant (related values) of the posterior.
+        This method returns a tensor sized [*n_layers, n_batches, n_samples, *shape].
+        reduce_sum(_logdet) gives the log of the determinant of q_sqrt.
+        """
+        if self.q_shape is 'diagonal':
+            return 2.0*self.q_sqrt # size [*n_layers, n_batches, *shape]
+        else:# size [*n_layers, n_batches, *shape]
+            return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
+
     @property
     def logdet(self):
         """
-        Returns the log-determinant of the posterior
+        Match the shape of logdet to self.tensor
         """
-        if self.q_shape is 'diagonal':
-            return 2.0*self.q_sqrt # size [*shape]
+        if self.n_samples is None:
+            return self._logdet()
         else:
-            return tf.log(tf.square(tf.matrix_diag_part(self.q_sqrt)))
+            return tf.expand_dims(self._logdet(), [-2])
 
     def KL(self, collection=None):
         """
@@ -214,14 +253,14 @@ class Normal(Variational):
     """
     Variational parameters with Normal prior without transformation.
     """
-    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
-                                        mean=0.0, stddev=1.0,
-                                        collections=[graph_key.VARIABLES]):
+    def __init__(self, shape, n_layers=[], n_batch=None, n_samples=None,
+                    q_shape='diagonal',
+                    mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES]):
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
-                        n_batch=n_batch,
-                        mean=mean, stddev=stddev,
-                        prior=priors.Normal(), transform=transforms.Identity(),
-                        collections=collections)
+                    n_batch=n_batch, n_samples=n_samples,
+                    mean=mean, stddev=stddev,
+                    prior=priors.Normal(), transform=transforms.Identity(),
+                    collections=collections)
     def _KL(self):
         """
         Overwrite _KL method to increase efficiency.
@@ -233,7 +272,8 @@ class Gaussian(Normal):
     """
     Variational parameters with Gaussian prior without transformation.
     """
-    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+    def __init__(self, shape, n_layers=[], n_batch=None, n_samples=None,
+                q_shape='diagonal',
                 mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
                 scale_shape=None, scale_n_layers=None):
         """
@@ -273,7 +313,7 @@ class Gaussian(Normal):
             q_std = stddev/np.abs(mean)
         #
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
-                        n_batch=n_batch,
+                        n_batch=n_batch, n_samples=n_samples,
                         mean=q_mean, stddev=q_std,
                         prior=priors.Normal(), transform=transforms.Identity(),
                         collections=collections)
@@ -294,12 +334,13 @@ class OffsetGaussian(Gaussian):
     """
     Variational parameters with Gaussian prior with offset.
     """
-    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+    def __init__(self, shape, n_layers=[], n_batch=None, n_samples=None,
+                q_shape='diagonal',
                 mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
                 scale_shape=None, scale_n_layers=None):
 
         Gaussian.__init__(self,
-            shape=shape, n_layers=n_layers, n_batch=n_batch,
+            shape=shape, n_layers=n_layers, n_batch=n_batch, n_samples=n_samples,
             q_shape=q_shape, mean=0.0, stddev=stddev, collections=collections,
             scale_shape=scale_shape, scale_n_layers=scale_n_layers)
         # scale shape
@@ -320,7 +361,7 @@ class Beta(Variational):
     The beta prior is assumed for this distribution, where its hyperparameter
     alpha and beta are also Variables.
     """
-    def __init__(self, shape, n_layers=[], n_batch=None, q_shape='diagonal',
+    def __init__(self, shape, n_layers=[], n_batch=None, n_samples=None, q_shape='diagonal',
                 mean=0.0, stddev=1.0, collections=[graph_key.VARIABLES],
                 scale_shape=None, scale_n_layers=None):
         """
@@ -350,7 +391,7 @@ class Beta(Variational):
         """
         # map mean and stddev
         Variational.__init__(self, shape, q_shape=q_shape, n_layers=n_layers,
-                        n_batch=n_batch,
+                        n_batch=n_batch, n_samples=n_samples,
                         mean=mean, stddev=stddev,
                         transform=transforms.Logistic(),
                         collections=collections)
