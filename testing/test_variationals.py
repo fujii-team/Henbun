@@ -116,9 +116,6 @@ class test_variational(unittest.TestCase):
             KL = KL/num_samples
             KL_ana = gaussian_KL(self.m[shape].m.q_mu.value,
                                  self.m[shape].m.q_sqrt.value, q_shape=shape)
-            print('\n-----------------')
-            print(KL, KL_ana)
-            print('-----------------\n')
             self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
 
     def test_feed(self):
@@ -132,11 +129,10 @@ class test_variational(unittest.TestCase):
 class Test_n_samples(unittest.TestCase):
     def setUp(self):
         """
-        Test variationals works fine
+        Test variationals with n_samples option works fine
         """
-        """ Prepare fullrank and diagonal variationals """
         tf.set_random_seed(0)
-        self.n_samples = 201
+        self.n_samples = 1001
         self.rng = np.random.RandomState(0)
         self.shapes = ['fullrank', 'diagonal']
         self.sqrts  = {'fullrank':self.rng.randn(3,10,10)*0.1,
@@ -167,11 +163,34 @@ class Test_n_samples(unittest.TestCase):
                 value = self.m[shape].run(self.m[shape].m)
                 self.assertTrue(value.shape == (3,self.n_samples, 10))
             value_mean = np.mean(value, axis=1)
-            print(value_mean, self.x)
             self.assertTrue(np.allclose(value_mean, self.x, atol=0.1))
 
     def test_logdet(self):
-        pass
+        """ make sure logdet is calculated correctly """
+        # true solution
+        logdets = {'fullrank':np.zeros((3,1,10)), 'diagonal': np.zeros((3,1,10))}
+        for i in range(3):
+            for j in range(10):
+                logdets['fullrank'][i,0,j] = 2.0*np.log(self.sqrts['fullrank'][i,j,j])
+                logdets['diagonal'][i,0,j] = 2.0*self.sqrts['diagonal'][i,j]
+        # check
+        for shape in self.shapes:
+            self.m[shape].initialize()
+            m = self.m[shape].m
+            with self.m[shape].tf_mode():
+                logdet = self.m[shape]._session.run(m.logdet)
+            self.assertTrue(np.allclose(logdet, logdets[shape]))
+
+    def test_KL(self):
+        """ Compare with analytical KL """
+        for shape in self.shapes:
+            with self.m[shape].tf_mode():
+                KL = self.m[shape].run(self.m[shape].KL())
+            KL = KL/self.m[shape].m.n_samples
+            KL_ana = gaussian_KL(self.m[shape].m.q_mu.value,
+                                 self.m[shape].m.q_sqrt.value, q_shape=shape)
+            self.assertTrue(np.allclose(KL, KL_ana, rtol=0.1))
+
 
 class test_variational_local(unittest.TestCase):
     def setUp(self):
@@ -255,9 +274,6 @@ class test_variational_local(unittest.TestCase):
                 # make sure Variational is seen as tf.Tensor in tf_mode
                 self.assertTrue(isinstance(self.m[shape].m, tf.Tensor))
             # make sure Variational is seen as Variational in non-tf_mode
-            print('\n-----------------------------')
-            print(type(self.m[shape].m))
-            print('-----------------------------\n')
             self.assertTrue(isinstance(self.m[shape].m, hb.variationals.Variational))
 
     def test_feed_without_tf_mode(self):

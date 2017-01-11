@@ -206,7 +206,7 @@ class Variational(Parameterized):
     def _logdet(self):
         """
         Returns the log-determinant (related values) of the posterior.
-        This method returns a tensor sized [*n_layers, n_batches, n_samples, *shape].
+        This method returns a tensor sized [*n_layers, n_batches, *shape].
         reduce_sum(_logdet) gives the log of the determinant of q_sqrt.
         """
         if self.q_shape is 'diagonal':
@@ -217,7 +217,11 @@ class Variational(Parameterized):
     @property
     def logdet(self):
         """
-        Match the shape of logdet to self.tensor
+        Returns the log-determinant (related values) of the posterior.
+        This method returns a tensor sized
+            n_batch is None: [*n_layers, n_batches, *shape]
+            n_batch is not None: [*n_layers, n_batches, 1, *shape]
+        reduce_sum(_logdet) gives the log of the determinant of q_sqrt.
         """
         if self.n_samples is None:
             return self._logdet()

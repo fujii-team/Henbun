@@ -176,11 +176,8 @@ class test_gp_sparse(unittest.TestCase):
             self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
 
 
-
-
-    '''
 class gp(hb.model.Model):
-    def setUp(self):
+    def setUp(self, n_samples=None):
         rng = np.random.RandomState(0)
         # --- data ---
         self.X = np.linspace(0,6,20).reshape(-1,1)
@@ -189,14 +186,25 @@ class gp(hb.model.Model):
         self.kern = hb.gp.kernels.UnitRBF() # kernel with unit variance
         self.k_var = hb.param.Variable(1, transform=hb.transforms.positive) # kernel variance
         # --- variational parameter ---
-        self.q = hb.variationals.Normal(shape=[1,20], q_shape='fullrank')
+        self.q = hb.variationals.Normal(shape=[20], n_samples=n_samples, q_shape='fullrank')
         # --- likelihood variance ---
         self.var = hb.param.Variable(1, transform=hb.transforms.positive)
 
     @hb.model.AutoOptimize()
-    def likelihood_var(self):
+    def likelihood_1sample(self):
         """
-        Likelihood by variational method
+        Likelihood by variational method with a single sample
+        """
+        q = tf.expand_dims(self.q, [-2])
+        Lq = tf.transpose(tf.matmul(q, self.kern.Cholesky(self.X), transpose_b=True) * tf.sqrt(self.k_var))
+        #Lq = tf.matmul(self.kern.Cholesky(self.X), self.q, transpose_b=True) * tf.sqrt(self.k_var)
+        return tf.reduce_sum(hb.densities.gaussian(self.Y, Lq, self.var))\
+                - self.KL()
+
+    @hb.model.AutoOptimize()
+    def likelihood_n_samples(self):
+        """
+        Likelihood by variational method with n samples option
         """
         Lq = tf.transpose(tf.matmul(self.q, self.kern.Cholesky(self.X), transpose_b=True) * tf.sqrt(self.k_var))
         #Lq = tf.matmul(self.kern.Cholesky(self.X), self.q, transpose_b=True) * tf.sqrt(self.k_var)
@@ -214,7 +222,10 @@ class gp(hb.model.Model):
 
 
 class test_gpr(unittest.TestCase):
-    def test(self):
+    def test_1sample(self):
+        """
+        Variational parameter with a single sample
+        """
         tf.set_random_seed(0)
         m = gp()
         # run normal gpr
@@ -233,11 +244,11 @@ class test_gpr(unittest.TestCase):
         # initialize
         m.q.q_sqrt = m.q.q_sqrt.value*0.01
         # adopt an exponential_decay of learning rate to maintain a good convergence.
-        m.likelihood_var().compile(optimizer=tf.train.AdamOptimizer(0.001))
-        m.likelihood_var().optimize(maxiter=40000)
+        m.likelihood_1sample().compile(optimizer=tf.train.AdamOptimizer(0.001))
+        m.likelihood_1sample().optimize(maxiter=40000)
 
         # average samples for likelihood
-        lik_var = np.mean([m.likelihood_var().run() for i in range(100)])
+        lik_var = np.mean([m.likelihood_1sample().run() for i in range(100)])
         print(lik, lik_var)
         print(k_lengthscale, m.kern.lengthscales.value)
         print(k_var, m.k_var.value)
@@ -246,7 +257,39 @@ class test_gpr(unittest.TestCase):
         self.assertTrue(np.allclose(k_lengthscale, m.kern.lengthscales.value, rtol=0.3))
         self.assertTrue(np.allclose(var, m.var.value, rtol=0.3))
 
-    '''
+    def test_n_samples(self):
+        tf.set_random_seed(0)
+        n_samples = 100
+        m = gp(n_samples=n_samples)
+        # run normal gpr
+        m.likelihood_ana().compile(optimizer=tf.train.AdamOptimizer(0.01))
+        m.likelihood_ana().optimize(maxiter=2000)
+        lik = m.likelihood_ana().run()
+        k_lengthscale = m.kern.lengthscales.value
+        k_var = m.k_var.value
+        var = m.var.value
+
+        # run variational gpr
+        # reset hyperparameters
+        m.kern.lengthscales=1.0
+        m.k_var=1.0
+        m.var  =1.0
+        # initialize
+        m.q.q_sqrt = m.q.q_sqrt.value*0.01
+        # adopt an exponential_decay of learning rate to maintain a good convergence.
+        m.likelihood_n_samples().compile(optimizer=tf.train.AdamOptimizer(0.001))
+        m.likelihood_n_samples().optimize(maxiter=10000)
+
+        # average samples for likelihood
+        lik_var = m.likelihood_n_samples().run() / n_samples
+        print(lik, lik_var)
+        print(k_lengthscale, m.kern.lengthscales.value)
+        print(k_var, m.k_var.value)
+        print(var, m.var.value)
+        self.assertTrue(np.allclose(lik, lik_var, atol=1.0))
+        self.assertTrue(np.allclose(k_lengthscale, m.kern.lengthscales.value, rtol=0.3))
+        self.assertTrue(np.allclose(var, m.var.value, rtol=0.3))
+
 
 if __name__ == '__main__':
     unittest.main()
