@@ -50,11 +50,11 @@ def gamma(shape, scale, x):
 
 
 def student_t(x, mean, scale, deg_free):
-    const = tf.lgamma(tf.cast((deg_free + 1.) * 0.5, float_type))\
-        - tf.lgamma(tf.cast(deg_free * 0.5, float_type))\
-        - 0.5*(tf.log(tf.square(scale)) + tf.cast(tf.log(deg_free), float_type)
+    deg_free = tf.cast(deg_free, float_type)
+    const = tf.lgamma((deg_free + 1.) * 0.5)\
+          - tf.lgamma(deg_free * 0.5)\
+          - 0.5*(tf.log(tf.square(scale)) + tf.log(deg_free)
                + np.log(np.pi))
-    const = tf.cast(const, float_type)
     return const - 0.5*(deg_free + 1.) * \
         tf.log(1. + (1. / deg_free) * (tf.square((x - mean) / scale)))
 
@@ -98,6 +98,6 @@ def bimixture(fraction, logp0, logp1):
 
     fraction: real tensor in [0,1]
     """
-    return log_sum_exp(tf.pack(
+    return log_sum_exp(tf.stack(
                 values=[logp0+tf.log(fraction), logp1+tf.log(1.0-fraction)], axis=-1),
                 axis=-1)

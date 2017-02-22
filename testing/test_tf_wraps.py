@@ -54,7 +54,7 @@ class test_log_sum_exp(unittest.TestCase):
 
         with tf.Session() as sess:
             value = sess.run(
-                 hb.tf_wraps.log_sum_exp(tf.pack([a, b, c], axis=1), axis=1))
+                 hb.tf_wraps.log_sum_exp(tf.stack([a, b, c], axis=1), axis=1))
         value_np = np.log(np.exp(a)+np.exp(b)+np.exp(c))
         self.assertTrue(np.allclose(value, value_np))
 

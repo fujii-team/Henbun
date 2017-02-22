@@ -20,7 +20,7 @@ class test_square(unittest.TestCase):
         trainer = tf.train.AdamOptimizer(learning_rate=0.01)
         self.m.initialize()
         with self.m.tf_mode():
-            op = tf.neg(self.m.likelihood())
+            op = tf.negative(self.m.likelihood())
             opt_op = trainer.minimize(op, var_list = self.m.get_tf_variables())
             self.m._session.run(tf.variables_initializer(tf.global_variables()))
         for i in range(1000):

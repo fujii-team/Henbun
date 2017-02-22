@@ -34,7 +34,7 @@ setup(name='Henbun',
       install_requires='''
                 numpy>=1.9
                 scipy>=0.16
-                tensorflow>=0.12.0rc1''',
+                tensorflow>=1.0''',
       classifiers=['License :: OSI Approved :: BSD License',
                    'Natural Language :: English',
                    'Operating System :: MacOS :: MacOS X',
