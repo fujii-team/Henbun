@@ -84,8 +84,9 @@ class UnitStationary(Kern):
                         tf.expand_dims(Xs, -1) + tf.expand_dims(X2s, -2)
 
     def euclid_dist(self, X, X2):
+        jitter = settings.numerics.jitter_level
         r2 = self.square_dist(X, X2)
-        return tf.sqrt(r2 + 1e-12)
+        return tf.sqrt(tf.abs(r2) + jitter*jitter)
 
     def Kdiag(self, X):
         return tf.ones(tf.shape(X)[:-1], dtype=float_type)
