@@ -217,7 +217,7 @@ class Optimizer(object):
         var_list = self.model.get_tf_variables(collection)
         with self.model.tf_mode():
             self.method_op = self.likelihood_method(self.model)
-            self.optimize_op = optimizer.minimize(tf.neg(self.method_op),
+            self.optimize_op = optimizer.minimize(tf.negative(self.method_op),
                                     var_list=var_list, global_step=global_step)
         # manual initialization.
         self.model.initialize()

@@ -22,7 +22,7 @@ class test_nn(unittest.TestCase):
         x = tf.constant(rng.randn(5,6,3), float_type)
         with m.tf_mode():
             y_nn_op = m.nn(x)
-            y_manual_op = tf.batch_matmul(tf.sigmoid(tf.batch_matmul(x,w1)+b1), w2)+b2
+            y_manual_op = tf.matmul(tf.sigmoid(tf.matmul(x,w1)+b1), w2)+b2
             y_nn = m._session.run(y_nn_op)
             y_manual = m._session.run(y_manual_op)
         self.assertTrue(np.allclose(y_nn, y_manual, atol=1.0e-4))
@@ -43,9 +43,9 @@ class test_nn(unittest.TestCase):
         x = tf.constant(rng.randn(6,5,6,3), float_type)
         with m.tf_mode():
             y_nn_op = m.nn(x)
-            y_manual_op = tf.batch_matmul(
-                tf.nn.relu(tf.batch_matmul(
-                tf.nn.sigmoid(tf.batch_matmul(
+            y_manual_op = tf.matmul(
+                tf.nn.relu(tf.matmul(
+                tf.nn.sigmoid(tf.matmul(
                     x,w1)+b1), w2)+b2), w3)+b3
             y_nn = m._session.run(y_nn_op)
             y_manual = m._session.run(y_manual_op)

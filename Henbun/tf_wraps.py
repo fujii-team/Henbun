@@ -27,7 +27,7 @@ def eye(N):
     """
     An identitiy matrix
     """
-    return tf.diag(tf.ones(tf.pack([N, ]), dtype=settings.dtypes.float_type))
+    return tf.diag(tf.ones([N, ], dtype=settings.dtypes.float_type))
 
 
 def clip(tensor):
