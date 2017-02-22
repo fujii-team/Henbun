@@ -110,7 +110,57 @@ class UnitRBF(UnitStationary):
     def K(self, X, X2=None):
         return tf.exp(-self.square_dist(X, X2)/2)
 
-class UnitCsymRBF(UnitStationary):
+
+class UnitMatern12(UnitStationary):
+    """
+    The Matern 1/2 kernel
+    """
+    def K(self, X, X2=None, presliced=False):
+        if not presliced:
+            X, X2 = self._slice(X, X2)
+        r = self.euclid_dist(X, X2)
+        return tf.exp(-r)
+
+
+class UnitMatern32(UnitStationary):
+    """
+    The Matern 3/2 kernel
+    """
+    def K(self, X, X2=None, presliced=False):
+        if not presliced:
+            X, X2 = self._slice(X, X2)
+        r = self.euclid_dist(X, X2)
+        return (1. + np.sqrt(3.) * r) * tf.exp(-np.sqrt(3.) * r)
+
+
+class UnitMatern52(UnitStationary):
+    """
+    The Matern 5/2 kernel
+    """
+    def K(self, X, X2=None, presliced=False):
+        if not presliced:
+            X, X2 = self._slice(X, X2)
+        r = self.euclid_dist(X, X2)
+        return (1.0 + np.sqrt(5.) * r + 5. / 3. * tf.square(r)) \
+               * tf.exp(-np.sqrt(5.) * r)
+
+
+class UnitCsym(UnitStationary):
+    """
+    Class to change kernel to cylindrically symmetric kernel.
+    The base kernel class should be stored self._base_kernel.
+    """
+    def K(self, X, X2=None):
+        if X2 is None:
+            X2 = X
+        return _base_kernel.K(X, X2) + _base_kernel.K(X,-X2)
+
+    def square(self, X):
+        Xeff = X/lengthscales # [n,d]  or [N,n,d]
+        return tf.reduce_sum(tf.square(Xeff), -1) # [n] or [N,n]
+
+
+class UnitCsymRBF(UnitCsym):
     """
     The squared exponential kernel in cylindrically symmetric space.
                      (x-x2)^2            (x+x2)^2
@@ -119,13 +169,19 @@ class UnitCsymRBF(UnitStationary):
     The second term indicates the correlation between the opsite
     side of the point against the axis x=0.
     """
-    def K(self, X, X2=None):
-        if X2 is None:
-            X2 = X
-        return tf.exp(-self.square_dist(X,  X2)/2)\
-             + tf.exp(-self.square_dist(X, -X2)/2)
+    _base_kernel = UnitRBF
 
-    def Kdiag(self, X):
-        Xeff = X/self.lengthscales # [n,d]  or [N,n,d]
-        Xs = tf.reduce_sum(tf.square(Xeff), -1) # [n] or [N,n]
-        return tf.ones_like(Xs, dtype=float_type) + tf.exp(-2*Xs)
+
+class UnitCsymMatern12(UnitCsym):
+    """    The Matern12 kernel in cylindrically symmetric space. """
+    _base_kernel = UnitMatern12
+
+
+class UnitCsymMatern32(UnitCsym):
+    """    The Matern32 kernel in cylindrically symmetric space. """
+    _base_kernel = UnitMatern32
+
+
+class UnitCsymMatern52(UnitCsym):
+    """    The Matern52 kernel in cylindrically symmetric space. """
+    _base_kernel = UnitMatern52
