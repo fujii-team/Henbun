@@ -98,6 +98,6 @@ def bimixture(fraction, logp0, logp1):
 
     fraction: real tensor in [0,1]
     """
-    return log_sum_exp(tf.pack(
+    return log_sum_exp(tf.stack(
                 values=[logp0+tf.log(fraction), logp1+tf.log(1.0-fraction)], axis=-1),
                 axis=-1)
