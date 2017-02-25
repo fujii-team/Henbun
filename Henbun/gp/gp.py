@@ -96,7 +96,7 @@ class SparseGP(GP):
         self.z = z # set the inital value
         self.m = len(z)
 
-    def samples(self, x, u, q_shape='diagonal'):
+    def samples(self, x, u, q_shape='diagonal', cholesky=None):
         """
         Returns samples from GP.
         args:
@@ -108,12 +108,18 @@ class SparseGP(GP):
                 'neglected' : Neglect this term.
                 'fullrank': Fully factorize this term.
                             Very slow.
+        + cholesky: optional. Cholesky factor sized [m,m].
+            In case of multiple call, it can be speed up by giving
+                pre-calculated values.
         """
         assert(q_shape in ['diagonal','neglected','fullrank'])
         jitter = settings.numerics.jitter_level
         N = tf.shape(u)[0]
-        # Cholesky factor of K(z,z)
-        Lm = self.kern.Cholesky(self.z) # sized [m,m]
+        if cholesky is None:
+            # Cholesky factor of K(z,z)
+            Lm = self.kern.Cholesky(self.z) # sized [m,m]
+        else:
+            Lm = cholesky
 
         # TODO insert assertion for shape difference
 
