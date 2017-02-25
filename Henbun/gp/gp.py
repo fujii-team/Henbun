@@ -123,7 +123,7 @@ class SparseGP(GP):
 
         # TODO insert assertion for shape difference
 
-        LnT = self._effective_LT(x)
+        LnT = self._effective_LT(x, Lm)
         if x.get_shape().ndims==2:
             samples = tf.matmul(u, LnT) # sized [N,n]
         elif x.get_shape().ndims==3:
@@ -149,7 +149,7 @@ class SparseGP(GP):
                     chol, transpose_b=True), [1])
 
 
-    def _effective_LT(self, x):
+    def _effective_LT(self, x, Lm):
         """
         Returns the effective cholesky factor,
               - T       - 1
@@ -162,7 +162,6 @@ class SparseGP(GP):
         + x : coordinate for the prediction, sized [N,n,d] or [n,d]
         """
         # Cholesky factor of K(z,z)
-        Lm = self.kern.Cholesky(self.z) # sized [m,m]
         if x.get_shape().ndims==2:
             # [m,n] -> [n,m]
             return tf.matrix_triangular_solve(Lm, self.kern.K(self.z, x))
