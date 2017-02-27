@@ -96,12 +96,16 @@ class SparseGP(GP):
         self.z = z # set the inital value
         self.m = len(z)
 
-    def samples(self, x, u, q_shape='diagonal'):
+    def samples(self, x, u, prior_scales=None, q_shape='diagonal'):
         """
         Returns samples from GP.
         args:
         + x: coordinate variables, sized [n,d] or [N,n,d].
         + u: inducing point values, sized [N,m]
+        + prior_scales: Usually, prior of u is N(0,I), but in some case, it
+            is convenient (or computationally efficient) to scale the prior as
+            N(0, a^2 I). a = prior_scales. The size of prior_scales is
+            [N].
         + q_shape: How to approximate the covariance, Knn-Knm Kmm^-1 Kmn term.
                 Shoule be one of ['diagonal', 'neglect', 'fullrank'].
                 'diagonal': Diagonalize this term (default).
@@ -114,7 +118,9 @@ class SparseGP(GP):
         N = tf.shape(u)[0]
         # Cholesky factor of K(z,z)
         Lm = self.kern.Cholesky(self.z) # sized [m,m]
-
+        #
+        if prior_scales is not None:
+            prior_scales = tf.expand_dims(prior_scales, axis=-1) # [N]->[N,1]
         # TODO insert assertion for shape difference
 
         LnT = self._effective_LT(x)
@@ -128,19 +134,37 @@ class SparseGP(GP):
             return samples
         elif q_shape is 'diagonal':
             diag_cov = self._additional_cov(x, LnT, 'diagonal')
-            return samples + tf.sqrt(tf.abs(diag_cov)) \
-                        * tf.random_normal(tf.shape(x)[:-1], dtype=float_type)
+            noise_iid = tf.random_normal([N, tf.shape(x)[-2]], dtype=float_type)
+            if prior_scales is None:
+                return samples + tf.sqrt(tf.abs(diag_cov)) * noise_iid
+            else:
+                return samples + \
+                        tf.sqrt(tf.abs(diag_cov)) * noise_iid * prior_scales
         else: # 'fullrank'
             jitterI = eye(tf.shape(x)[-2]) * jitter
             chol = tf.cholesky(self._additional_cov(x, LnT, 'fullrank') + jitterI) # [n,n]
             if x.get_shape().ndims==2:
-                return samples + tf.matmul(
-                    tf.random_normal([N,tf.shape(x)[0]], dtype=float_type), # [N,n]
-                    chol, transpose_b=True) # [N,n]@[n,n] -> [N,n]
+                # Sized [N,n]
+                noise_iid = tf.random_normal(
+                                        [N,tf.shape(x)[-2]], dtype=float_type)
+                # [N,n]@[n,n] -> [N,n]
+                if prior_scales is None:
+                    return samples + tf.matmul(noise_iid, chol,
+                                                            transpose_b=True)
+                else:
+                    return samples + tf.matmul(noise_iid * prior_scales, chol,
+                                                            transpose_b=True)
             elif x.get_shape().ndims==3:
-                return samples + tf.squeeze(tf.matmul(
-                    tf.random_normal([N, 1,tf.shape(x)[1]], dtype=float_type),
-                    chol, transpose_b=True), [1])
+                noise_iid = tf.random_normal(
+                                        [N,1,tf.shape(x)[-2]], dtype=float_type)
+                # [N,1,n] * [N,n,n] -> [N,1,n] -> [N,n]
+                if prior_scales is None:
+                    return samples + tf.squeeze(tf.matmul(
+                                noise_iid, chol, transpose_b=True), [1])
+                else: # [N,1]->[N,1,1]
+                    prior_scales = tf.expand_dims(prior_scales, axis=-1)
+                    return samples + tf.squeeze(tf.matmul(
+                        noise_iid * prior_scales, chol, transpose_b=True), [1])
 
 
     def _effective_LT(self, x):

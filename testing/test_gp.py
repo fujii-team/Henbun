@@ -22,10 +22,12 @@ class test_gp_numerics(unittest.TestCase):
         #self.m.initialize()
         with self.m.tf_mode():
             # just test works fine
-            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u, 'neglected'))
+            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u,
+                                                        q_shape='neglected'))
             self.assertFalse(np.any(np.isnan(samples))) # test if it is not None
             # Also test for q_shape=diagonal case
-            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u, 'diagonal'))
+            samples = self.m.run(self.m.sparse_gp.samples(x, self.m.u,
+                                                        q_shape='diagonal'))
             self.assertFalse(np.any(np.isnan(samples))) # test if it is not None
 
 
@@ -175,6 +177,29 @@ class test_gp_sparse(unittest.TestCase):
             # assert shape
             self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
 
+    def test_scales(self):
+        # n=200, N=20, d=2
+        x = tf.constant(self.rng.randn(20,40,2), dtype=float_type)
+        scales = tf.constant(self.rng.randn(20), dtype=float_type)
+        #self.m.initialize()
+        with self.m.tf_mode():
+            # just test works fine
+            samples = self.m.sparse_gp.samples(x, self.m.u, prior_scales=scales)
+            # make sure gradients certainly works
+            grad = tf.gradients(samples, tf.trainable_variables())
+        # assert shape
+        self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
+        # assert grad certainly works
+        gvalues = [self.m.run(g) for g in grad if g is not None]
+        self.assertTrue(len(gvalues)>0)
+        # test other approximation methods
+        for q_shape in ['neglected', 'fullrank']:
+            with self.m.tf_mode():
+                # just test works fine
+                samples = self.m.sparse_gp.samples(x, self.m.u,
+                            prior_scales=scales, q_shape=q_shape)
+            # assert shape
+            self.assertTrue(np.allclose(self.m.run(samples).shape, [20,40]))
 
 
 
